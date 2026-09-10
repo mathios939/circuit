@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="Wahoo ELEMNT" xmlns="http://www.topografix.com/GPX/1/1">
+  <trk>
+    <name>Segmented ride</name>
+    <trkseg>
+      <trkpt lat="45.7640" lon="4.8357"/>
+      <trkpt lat="45.7650" lon="4.8370"/>
+      <trkpt lat="45.7660" lon="4.8385"/>
+    </trkseg>
+    <trkseg>
+      <trkpt lat="45.7680" lon="4.8400"/>
+      <trkpt lat="45.7690" lon="4.8420"/>
+    </trkseg>
+  </trk>
+</gpx>

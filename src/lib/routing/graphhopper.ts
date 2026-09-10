@@ -2,6 +2,7 @@ import { z } from "zod";
 import { AppError } from "@/lib/errors";
 import { fetchJson, UpstreamHttpError } from "@/lib/server/http";
 import { normaliseSurface, normaliseWay } from "./attributes";
+import { buildInstructions, countTurns, graphhopperSignType } from "./instructions";
 import { buildRoutingIntent } from "./intent";
 import type {
   CalculateLoopInput,
@@ -26,7 +27,18 @@ const responseSchema = z.object({
       distance: z.number(),
       time: z.number().optional(),
       points: z.object({ coordinates: z.array(z.array(z.number()).min(2)) }),
-      instructions: z.array(z.object({ sign: z.number().optional() })).optional(),
+      instructions: z
+        .array(
+          z.object({
+            sign: z.number().optional(),
+            text: z.string().optional(),
+            street_name: z.string().optional(),
+            distance: z.number().optional(),
+            time: z.number().optional(),
+            interval: z.tuple([z.number(), z.number()]).optional(),
+          }),
+        )
+        .optional(),
       details: z
         .object({
           surface: z.array(detailInterval).optional(),
@@ -133,12 +145,27 @@ export class GraphHopperRoutingProvider implements RoutingProvider {
       (v) => normaliseWay(v),
     );
 
+    const instructions = path.instructions
+      ? buildInstructions(
+          coordinates,
+          path.instructions.map((i) => ({
+            distanceM: i.distance ?? 0,
+            durationS: i.time !== undefined ? i.time / 1000 : undefined,
+            type: graphhopperSignType(i.sign),
+            streetName: i.street_name,
+            pointIndex: i.interval?.[0] ?? 0,
+            text: i.text,
+          })),
+        )
+      : undefined;
+
     return {
       coordinates,
       distanceM: path.distance,
       durationS: path.time !== undefined ? path.time / 1000 : undefined,
-      turnCount: path.instructions ? Math.max(0, path.instructions.length - 2) : undefined,
+      turnCount: instructions ? countTurns(instructions) : undefined,
       segments,
+      instructions,
     };
   }
 
@@ -161,8 +188,8 @@ export class GraphHopperRoutingProvider implements RoutingProvider {
       {
         ...this.baseBody(input.profile),
         points: input.waypoints.map((p) => [p.lng, p.lat]),
-        // Pass-through waypoints: no U-turn at intermediate points.
-        pass_through: true,
+        // Pass-through waypoints (no U-turn at intermediate points) need the flexible mode.
+        ...(input.waypoints.length > 2 ? { pass_through: true, "ch.disable": true } : {}),
       },
       input.signal,
     );

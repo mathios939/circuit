@@ -34,8 +34,10 @@ test.describe("main flow", () => {
     await page.getByRole("radio", { name: "Boucle" }).click();
     await page.getByTestId("distance-input").fill("50");
 
-    // 4. generate
+    // 4. generate — real stages are streamed while the engine works
     await page.getByTestId("generate-button").click();
+    await expect(page.getByTestId("generation-progress")).toBeVisible();
+    await expect(page.getByTestId("generation-progress")).toContainText("Calcul des itinéraires");
 
     // 5. results: variants, stats, elevation profile
     await expect(page.getByTestId("route-stats")).toBeVisible({ timeout: 30_000 });
@@ -48,8 +50,10 @@ test.describe("main flow", () => {
     expect(km).toBeLessThan(56);
     await expect(page.getByTestId("stat-ascent")).toContainText("m");
     await expect(page.getByTestId("elevation-profile")).toBeVisible();
+    await expect(page.getByRole("list", { name: "Légende des pentes" })).toBeVisible();
     await expect(page.getByTestId("route-dna")).toBeVisible();
     await expect(page.getByTestId("route-insights")).toBeVisible();
+    await expect(page.getByTestId("demo-banner")).toHaveCount(0);
 
     // Switching variant updates the details.
     const firstName = await page.getByTestId("route-name").textContent();
@@ -129,5 +133,48 @@ test.describe("main flow", () => {
     // The recalculation went through: the undo stack is no longer empty.
     await expect(undo).toBeEnabled({ timeout: 30_000 });
     await expect(page.getByTestId("route-stats")).toBeVisible();
+  });
+});
+
+test.describe("operations", () => {
+  test("health endpoint reports the configured providers and probes succeed on the mock stack", async ({ request }) => {
+    const health = await request.get("/api/health");
+    expect(health.ok()).toBe(true);
+    const body = (await health.json()) as { status: string; configuration: { routing: { primary: string } } };
+    expect(body.status).toBe("ok");
+    expect(body.configuration.routing.primary).toBe("mock");
+    const probed = await request.get("/api/health?probe=1");
+    expect(probed.ok()).toBe(true);
+    const json = (await probed.json()) as { probes: { category: string; provider: string; status: string; latencyMs?: number }[] };
+    const byCategory = new Map(json.probes.map((p) => [p.category, p]));
+    for (const c of ["routing", "geocoding", "elevation"]) {
+      expect(byCategory.get(c)?.status).toBe("ok");
+      expect(typeof byCategory.get(c)?.latencyMs).toBe("number");
+    }
+    expect(JSON.stringify(json)).not.toMatch(/key=/i);
+  });
+
+  test("diagnostics page lists every provider family", async ({ page }) => {
+    await page.goto("/diagnostics");
+    await expect(page.getByRole("heading", { name: "Diagnostic des services" })).toBeVisible();
+    await expect(page.getByTestId("probe-row").first()).toBeVisible({ timeout: 30_000 });
+    for (const label of ["Routing", "Geocoding", "Elevation", "Maps"]) {
+      await expect(page.getByRole("heading", { name: label })).toBeVisible();
+    }
+    await expect(page.getByText("mock", { exact: false }).first()).toBeVisible();
+  });
+
+  test("rate limit answers with a bucket-specific readable message", async ({ request }, testInfo) => {
+    // The import bucket is configured at 5/min for E2E: the 6th call from one IP must be refused politely,
+    // while another bucket (geocoding) for the same IP keeps working.
+    const ip = `203.0.113.${(testInfo.parallelIndex % 200) + 10 + testInfo.workerIndex}`;
+    let last;
+    for (let i = 0; i < 6; i++) last = await request.post("/api/nl", { data: { text: "boucle vtt 20 km annecy" }, headers: { "x-forwarded-for": ip } });
+    expect(last!.status()).toBe(429);
+    const body = (await last!.json()) as { error: { code: string; message: string } };
+    expect(body.error.code).toBe("RATE_LIMITED");
+    expect(body.error.message).toMatch(/analyses/);
+    const geocode = await request.get("/api/geocode?q=Annecy", { headers: { "x-forwarded-for": ip } });
+    expect(geocode.ok()).toBe(true);
   });
 });

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gpx creator="Garmin Connect" version="1.1"
+  xsi:schemaLocation="http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/11.xsd"
+  xmlns:ns3="http://www.garmin.com/xmlschemas/TrackPointExtension/v1"
+  xmlns="http://www.topografix.com/GPX/1/1"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:ns2="http://www.garmin.com/xmlschemas/GpxExtensions/v3">
+  <metadata>
+    <link href="connect.garmin.com"><text>Garmin Connect</text></link>
+    <time>2024-05-12T07:31:02.000Z</time>
+  </metadata>
+  <trk>
+    <name>Sortie vélo Annecy</name>
+    <type>cycling</type>
+    <trkseg>
+      <trkpt lat="45.8992000" lon="6.1294000"><ele>447.6</ele><time>2024-05-12T07:31:02.000Z</time><extensions><ns3:TrackPointExtension><ns3:hr>101</ns3:hr><ns3:cad>0</ns3:cad></ns3:TrackPointExtension></extensions></trkpt>
+      <trkpt lat="45.9001000" lon="6.1301000"><ele>448.2</ele><time>2024-05-12T07:31:20.000Z</time><extensions><ns3:TrackPointExtension><ns3:hr>110</ns3:hr></ns3:TrackPointExtension></extensions></trkpt>
+      <trkpt lat="45.9012000" lon="6.1315000"><ele>451.0</ele><time>2024-05-12T07:31:45.000Z</time></trkpt>
+      <trkpt lat="45.9025000" lon="6.1330000"><ele>455.4</ele><time>2024-05-12T07:32:10.000Z</time></trkpt>
+    </trkseg>
+  </trk>
+</gpx>

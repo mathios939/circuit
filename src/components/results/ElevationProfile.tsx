@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useRef } from "react";
+import { useMemo, useRef, useState } from "react";
 import type { RouteResult } from "@/lib/types";
 import { pointAtDistance, samplePath } from "@/lib/geo";
+import { filterElevationSeries } from "@/lib/stats/elevation-gain";
 import { formatDistance, formatElevation } from "@/lib/utils/format";
 import { useRouteStore } from "@/store/route-store";
 
@@ -18,6 +19,7 @@ export function ElevationProfile({ route }: { route: RouteResult }) {
   const hoverDist = useRouteStore((s) => s.hoverDist);
   const setHoverDist = useRouteStore((s) => s.setHoverDist);
   const svgRef = useRef<SVGSVGElement>(null);
+  const [showGradients, setShowGradients] = useState(true);
 
   const model = useMemo(() => buildModel(route), [route]);
   if (!model) {
@@ -47,11 +49,19 @@ export function ElevationProfile({ route }: { route: RouteResult }) {
 
   return (
     <div className="space-y-1" data-testid="elevation-profile">
-      <div className="flex items-baseline justify-between">
+      <div className="flex items-baseline justify-between gap-2">
         <p className="text-[10px] font-semibold uppercase tracking-wide text-ink-500">Profil altimétrique</p>
-        <p className="h-4 text-xs tabular-nums text-ink-700" aria-live="polite">
+        <p className="h-4 min-w-0 truncate text-xs tabular-nums text-ink-700" aria-live="polite">
           {hover && typeof hover.ele === "number" ? `${formatDistance(hover.dist)} · ${formatElevation(hover.ele)}${gradientAt(samples, hover.dist)}` : ""}
         </p>
+        <button
+          type="button"
+          onClick={() => setShowGradients((v) => !v)}
+          aria-pressed={showGradients}
+          className="shrink-0 text-[10px] font-medium text-ink-500 underline-offset-2 hover:text-ink-900 hover:underline"
+        >
+          Pentes
+        </button>
       </div>
       <svg
         ref={svgRef}
@@ -75,9 +85,9 @@ export function ElevationProfile({ route }: { route: RouteResult }) {
             </text>
           </g>
         ))}
-        {segments.map((seg, i) => (
-          <path key={i} d={seg.d} fill={seg.color} opacity={0.85} />
-        ))}
+        {showGradients
+          ? segments.map((seg, i) => <path key={i} d={seg.d} fill={seg.color} opacity={0.85} />)
+          : null}
         <path d={areaPath} fill="url(#elev-fill)" opacity={0.15} />
         <path d={linePath} fill="none" stroke="#111827" strokeWidth={1.2} />
         {kmTicks.map((km) => (
@@ -98,6 +108,15 @@ export function ElevationProfile({ route }: { route: RouteResult }) {
           </linearGradient>
         </defs>
       </svg>
+      {showGradients ? (
+        <ul className="flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-ink-500" aria-label="Légende des pentes">
+          {GRADIENT_CLASSES.map((g) => (
+            <li key={g.label} className="inline-flex items-center gap-1">
+              <span className="h-2 w-3 rounded-sm" style={{ background: g.color }} aria-hidden /> {g.label}
+            </li>
+          ))}
+        </ul>
+      ) : null}
     </div>
   );
 }
@@ -117,7 +136,9 @@ function buildModel(route: RouteResult): ProfileModel | null {
   const total = route.points[route.points.length - 1]!.dist;
   const raw = samplePath(route.points, 25, 240).filter((p): p is typeof p & { ele: number } => typeof p.ele === "number");
   if (raw.length < 2) return null;
-  const samples = raw.map((p) => ({ dist: p.dist, ele: p.ele }));
+  // Same filter as the statistics: the chart shows what the D+ is computed on.
+  const filtered = filterElevationSeries(raw.map((p) => p.ele));
+  const samples = raw.map((p, i) => ({ dist: p.dist, ele: filtered[i]! }));
   let minEle = Infinity;
   let maxEle = -Infinity;
   for (const s of samples) {
@@ -148,12 +169,18 @@ function buildModel(route: RouteResult): ProfileModel | null {
   return { samples, total, minEle, maxEle, areaPath, linePath, segments };
 }
 
+/** Slope classes used to colour the profile (absolute gradient). */
+export const GRADIENT_CLASSES = [
+  { max: 3, label: "0–3 %", color: "#d1fae5" },
+  { max: 6, label: "3–6 %", color: "#fde68a" },
+  { max: 10, label: "6–10 %", color: "#fdba74" },
+  { max: 15, label: "10–15 %", color: "#fca5a5" },
+  { max: Infinity, label: "15 %+", color: "#c084fc" },
+] as const;
+
 function gradientColor(grad: number): string {
   const g = Math.abs(grad);
-  if (g < 3) return "#d1fae5";
-  if (g < 6) return "#fde68a";
-  if (g < 10) return "#fdba74";
-  return "#fca5a5";
+  return (GRADIENT_CLASSES.find((c) => g < c.max) ?? GRADIENT_CLASSES[GRADIENT_CLASSES.length - 1]!).color;
 }
 
 function gradientAt(samples: { dist: number; ele: number }[], dist: number): string {

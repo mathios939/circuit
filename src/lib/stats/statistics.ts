@@ -91,6 +91,7 @@ export function computeRouteStatistics(
     distanceM: Math.round(distanceM),
     ascentM: gain.ascentM,
     descentM: gain.descentM,
+    ascentRawM: gain.hasElevation ? gain.ascentRawM : undefined,
     minEleM: gain.minEleM,
     maxEleM: gain.maxEleM,
     maxGradientPct: gain.maxGradientPct,

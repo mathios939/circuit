@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getElevationProvider } from "@/lib/elevation";
 import { getRoutingProvider } from "@/lib/routing";
 import { recalculateRoute } from "@/lib/route-generator";
-import { enforceRateLimit, errorResponse, parseJsonBody } from "@/lib/server/api";
+import { createRequestContext, enforceRateLimit, errorResponse, jsonResponse, parseJsonBody } from "@/lib/server/api";
 import { getServerEnv } from "@/lib/server/env";
 import { shortId } from "@/lib/utils/id";
 import { calculateRequestSchema } from "@/lib/validation/schemas";
@@ -13,8 +13,9 @@ export const dynamic = "force-dynamic";
 
 /** POST /api/routes/calculate — routes through explicit waypoints (editor / recalculation). */
 export async function POST(request: Request): Promise<NextResponse> {
+  const ctx = createRequestContext(request, "routes/calculate");
   try {
-    enforceRateLimit(request, 2);
+    enforceRateLimit(request, "calculate");
     const body = await parseJsonBody(request, calculateRequestSchema);
     const env = getServerEnv();
 
@@ -37,18 +38,21 @@ export async function POST(request: Request): Promise<NextResponse> {
       preferences: body.preferences,
     };
 
-    const route = await recalculateRoute(
-      { request: { ...routeRequest, activity: body.activity, preferences: body.preferences ?? routeRequest.preferences }, style: body.style ?? "balanced", waypoints, name: body.name },
-      {
-        routing: getRoutingProvider(),
-        elevation: getElevationProvider(),
-        concurrency: env.routing.concurrency,
-        elevationSamples: env.elevation.samplePoints,
-        signal: AbortSignal.timeout(env.routing.timeoutMs * 2),
-      },
+    const routing = getRoutingProvider();
+    const route = await ctx.logger.time("recalculate", { provider: routing.id, activity: body.activity, waypoints: waypoints.length }, () =>
+      recalculateRoute(
+        { request: { ...routeRequest, activity: body.activity, preferences: body.preferences ?? routeRequest.preferences }, style: body.style ?? "balanced", waypoints, name: body.name },
+        {
+          routing,
+          elevation: getElevationProvider(),
+          concurrency: env.routing.concurrency,
+          elevationSamples: env.elevation.samplePoints,
+          signal: AbortSignal.any([request.signal, AbortSignal.timeout(env.routing.timeoutMs * 2)]),
+        },
+      ),
     );
-    return NextResponse.json({ route }, { headers: { "Cache-Control": "no-store" } });
+    return jsonResponse({ route }, ctx);
   } catch (e) {
-    return errorResponse(e);
+    return errorResponse(e, ctx);
   }
 }

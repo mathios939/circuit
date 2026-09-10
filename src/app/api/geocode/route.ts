@@ -1,26 +1,29 @@
 import { NextResponse } from "next/server";
 import { getGeocodingProvider, type GeocodeResult } from "@/lib/geocoding";
-import { enforceRateLimit, errorResponse, parseSearchParams } from "@/lib/server/api";
+import { createRequestContext, enforceRateLimit, errorResponse, jsonResponse, parseSearchParams } from "@/lib/server/api";
 import { getGlobalCache, memoizeAsync } from "@/lib/server/cache";
 import { geocodeQuerySchema } from "@/lib/validation/schemas";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+/** Search results are cached 6 h (2 000 entries): places do not move. */
 const cache = getGlobalCache<GeocodeResult[]>("geocode", 2000, 6 * 60 * 60 * 1000);
 const memo = memoizeAsync(cache);
 
 /** GET /api/geocode?q=Annecy[&limit=6][&lat=..&lng=..] — place search with suggestions. */
 export async function GET(request: Request): Promise<NextResponse> {
+  const ctx = createRequestContext(request, "geocode");
   try {
-    enforceRateLimit(request);
+    enforceRateLimit(request, "geocoding");
     const params = parseSearchParams(request, geocodeQuerySchema);
     const provider = getGeocodingProvider();
     const near = params.lat !== undefined && params.lng !== undefined ? { lat: Math.round(params.lat * 10) / 10, lng: Math.round(params.lng * 10) / 10 } : undefined;
     const key = `${provider.id}|${params.q.toLowerCase()}|${params.limit ?? 6}|${near ? `${near.lat},${near.lng}` : ""}`;
-    const results = await memo(key, () => provider.search(params.q, { limit: params.limit ?? 6, near, lang: "fr" }));
-    return NextResponse.json({ results }, { headers: { "Cache-Control": "private, max-age=300" } });
+    const cached = cache.get(key) !== undefined;
+    const results = await ctx.logger.time("geocode", { provider: provider.id, cached }, () => memo(key, () => provider.search(params.q, { limit: params.limit ?? 6, near, lang: "fr" })));
+    return jsonResponse({ results }, ctx, { cacheControl: "private, max-age=300" });
   } catch (e) {
-    return errorResponse(e);
+    return errorResponse(e, ctx);
   }
 }

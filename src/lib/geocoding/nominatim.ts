@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { LatLng } from "@/lib/types";
-import { fetchJson } from "@/lib/server/http";
+import { createThrottle, fetchJson } from "@/lib/server/http";
 import type { GeocodeOptions, GeocodeResult, GeocodingProvider } from "./provider";
 
 const itemSchema = z.object({
@@ -37,12 +37,21 @@ function toResult(item: z.infer<typeof itemSchema>): GeocodeResult {
  */
 export class NominatimGeocodingProvider implements GeocodingProvider {
   readonly id = "nominatim";
+  /** Usage policy: at most one request per second per application. */
+  private readonly throttle = createThrottle(1_100);
 
   constructor(
     private readonly baseUrl: string,
     private readonly userAgent: string,
     private readonly timeoutMs = 8_000,
+    private readonly email?: string,
   ) {}
+
+  private get(url: string, signal?: AbortSignal): Promise<unknown> {
+    return this.throttle(() =>
+      fetchJson(url, { headers: { "User-Agent": this.userAgent }, timeoutMs: this.timeoutMs, signal, service: "nominatim" }),
+    );
+  }
 
   async search(query: string, options: GeocodeOptions = {}): Promise<GeocodeResult[]> {
     const params = new URLSearchParams({
@@ -52,12 +61,8 @@ export class NominatimGeocodingProvider implements GeocodingProvider {
       addressdetails: "1",
       "accept-language": options.lang ?? "fr",
     });
-    const raw = await fetchJson(`${this.baseUrl}/search?${params.toString()}`, {
-      headers: { "User-Agent": this.userAgent },
-      timeoutMs: this.timeoutMs,
-      signal: options.signal,
-      service: "nominatim",
-    });
+    if (this.email) params.set("email", this.email);
+    const raw = await this.get(`${this.baseUrl}/search?${params.toString()}`, options.signal);
     const parsed = searchSchema.safeParse(raw);
     if (!parsed.success) return [];
     return parsed.data.map(toResult).filter((r) => Number.isFinite(r.lat) && Number.isFinite(r.lng));
@@ -72,12 +77,8 @@ export class NominatimGeocodingProvider implements GeocodingProvider {
       zoom: "16",
       "accept-language": options.lang ?? "fr",
     });
-    const raw = await fetchJson(`${this.baseUrl}/reverse?${params.toString()}`, {
-      headers: { "User-Agent": this.userAgent },
-      timeoutMs: this.timeoutMs,
-      signal: options.signal,
-      service: "nominatim",
-    });
+    if (this.email) params.set("email", this.email);
+    const raw = await this.get(`${this.baseUrl}/reverse?${params.toString()}`, options.signal);
     const parsed = itemSchema.safeParse(raw);
     return parsed.success ? toResult(parsed.data) : null;
   }

@@ -33,7 +33,7 @@ export function ActivityPicker() {
             aria-checked={active}
             data-testid={`activity-${id}`}
             onClick={() => setActivity(id)}
-            className={`flex flex-col items-center gap-1 rounded-xl border px-1 py-2.5 text-[11px] font-medium transition-all ${
+            className={`flex flex-col items-center gap-1 rounded-xl border px-1 py-2.5 text-[11px] font-medium transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-1 ${
               active ? "border-ink-900 bg-ink-900 text-white shadow-sm" : "border-ink-200 bg-white text-ink-700 hover:border-ink-300 hover:bg-ink-50"
             }`}
           >

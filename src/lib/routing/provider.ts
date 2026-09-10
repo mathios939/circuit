@@ -1,4 +1,4 @@
-import type { ActivityType, LatLng, RoutePreferences, RouteSegment, RouteStyle } from "@/lib/types";
+import type { ActivityType, LatLng, RouteInstruction, RoutePreferences, RouteSegment, RouteStyle } from "@/lib/types";
 
 /** What the routing engine should optimise for. */
 export interface RoutingProfileOptions {
@@ -24,6 +24,8 @@ export interface RawRoute {
   segments?: RouteSegment[];
   /** Indices in `coordinates` where each input waypoint was snapped. */
   waypointIndices?: number[];
+  /** Turn-by-turn instructions, normalised, when the engine returns them. */
+  instructions?: RouteInstruction[];
 }
 
 export interface CalculateRouteInput {

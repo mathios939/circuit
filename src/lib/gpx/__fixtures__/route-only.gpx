@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.0" creator="legacy planner" xmlns="http://www.topografix.com/GPX/1/0">
+  <rte>
+    <name>Itinéraire planifié</name>
+    <rtept lat="48.4047" lon="2.7016"><ele>80</ele><name>Départ</name></rtept>
+    <rtept lat="48.4100" lon="2.7100"><ele>95</ele></rtept>
+    <rtept lat="48.4150" lon="2.7200"><ele>110</ele></rtept>
+  </rte>
+</gpx>

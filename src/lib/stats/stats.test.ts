@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { toRoutePoints } from "@/lib/geo";
 import { getActivityProfile } from "@/lib/activities/profiles";
 import type { RouteSegment } from "@/lib/types";
-import { computeElevationGain, computeMaxGradient, smoothElevation } from "./elevation-gain";
+import { accumulateWithHysteresis, computeElevationGain, computeMaxGradient, filterElevationSeries, smoothElevation } from "./elevation-gain";
 import { estimateDurationSeconds } from "./duration";
 import { estimateDifficulty } from "./difficulty";
 import { computeBreakdowns, computeRouteStatistics } from "./statistics";
@@ -12,14 +12,42 @@ const line = (eles: (number | undefined)[]) =>
   toRoutePoints(eles.map((ele, i) => ({ lat: 45 + i * 0.0009, lng: 6, ele })));
 
 describe("computeElevationGain", () => {
-  it("counts ascent and descent with hysteresis (ignores small noise)", () => {
-    const pts = line([100, 101, 100, 102, 101, 150, 151, 149, 120, 121]);
-    const gain = computeElevationGain(pts, 5);
-    expect(gain.ascentM).toBe(50); // 100 → 150 (noise ignored)
-    expect(gain.descentM).toBe(30); // 150 → 120
-    expect(gain.minEleM).toBe(100);
-    expect(gain.maxEleM).toBe(151);
+  it("ignores small oscillations (hysteresis) — reference example 100, 101, 100.8, 101.2, 105, 110", () => {
+    const series = [100, 101, 100.8, 101.2, 105, 110];
+    const filtered = accumulateWithHysteresis(series, 4);
+    expect(filtered.ascent).toBeCloseTo(10, 5);
+    expect(filtered.descent).toBe(0);
+    const raw = accumulateWithHysteresis(series, 0);
+    expect(raw.ascent).toBeGreaterThan(10); // every wiggle counted
+  });
+
+  it("counts ascent and descent on a noisy climb and reports the raw gain for comparison", () => {
+    const noisy: number[] = [];
+    for (let i = 0; i < 200; i++) noisy.push(100 + i * 0.5 + (i % 2 === 0 ? 1.5 : -1.5)); // +100 m with ±1.5 m jitter
+    const gain = computeElevationGain(line(noisy));
+    expect(gain.ascentM).toBeGreaterThanOrEqual(95);
+    expect(gain.ascentM).toBeLessThanOrEqual(105);
+    expect(gain.ascentRawM).toBeGreaterThan(gain.ascentM * 2); // raw jitter inflates the gain
     expect(gain.hasElevation).toBe(true);
+  });
+
+  it("removes isolated DEM spikes with the moving median", () => {
+    const series = [100, 100, 100, 160, 100, 100, 100, 100];
+    const filtered = filterElevationSeries(series);
+    expect(Math.max(...filtered)).toBeLessThan(110);
+    const gain = computeElevationGain(line(series));
+    expect(gain.ascentM).toBe(0);
+  });
+
+  it("counts real climbs and descents", () => {
+    const pts = line([100, 100, 100, 100, 100, 150, 150, 150, 150, 150, 120, 120, 120, 120, 120]);
+    const gain = computeElevationGain(pts, 4);
+    expect(gain.ascentM).toBeGreaterThanOrEqual(48);
+    expect(gain.ascentM).toBeLessThanOrEqual(50);
+    expect(gain.descentM).toBeGreaterThanOrEqual(28);
+    expect(gain.descentM).toBeLessThanOrEqual(30);
+    expect(gain.minEleM).toBe(100);
+    expect(gain.maxEleM).toBe(150);
   });
 
   it("reports no elevation when data is missing", () => {
@@ -35,9 +63,10 @@ describe("computeElevationGain", () => {
     expect(grad).toBeLessThan(25);
   });
 
-  it("smooths elevation with a moving average", () => {
-    const smoothed = smoothElevation(line([100, 200, 100]), 3);
-    expect(smoothed[1]!.ele).toBeCloseTo(133.3, 1);
+  it("smooths route points (median + mean) and keeps short series untouched", () => {
+    expect(smoothElevation(line([100, 200, 100]))[1]!.ele).toBe(200);
+    const smoothed = smoothElevation(line([100, 100, 100, 200, 100, 100, 100]));
+    expect(smoothed[3]!.ele).toBeLessThan(110);
   });
 });
 
@@ -103,7 +132,9 @@ describe("computeBreakdowns / computeRouteStatistics", () => {
   it("assembles full statistics", () => {
     const stats = computeRouteStatistics(pts, segments, { activity: "gravel", mode: "point_to_point", turnCount: 4 });
     expect(stats.distanceM).toBe(Math.round(total));
-    expect(stats.ascentM).toBe(50);
+    expect(stats.ascentM).toBeGreaterThanOrEqual(40);
+    expect(stats.ascentM).toBeLessThanOrEqual(50);
+    expect(stats.ascentRawM).toBe(50);
     expect(stats.hasElevation).toBe(true);
     expect(stats.durationS).toBeGreaterThan(0);
     expect(stats.difficulty).toBe("easy");

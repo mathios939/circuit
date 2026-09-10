@@ -32,7 +32,7 @@ function VariantCard({ route, letter, active, onSelect }: { route: RouteResult; 
       onClick={onSelect}
       aria-pressed={active}
       data-testid="variant-card"
-      className={`w-full rounded-xl border p-3 text-left transition-all ${active ? "border-ink-900 bg-white shadow-panel ring-1 ring-ink-900" : "border-ink-200 bg-white hover:border-ink-300"}`}
+      className={`w-full rounded-xl border p-3 text-left transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 ${active ? "border-ink-900 bg-white shadow-panel ring-1 ring-ink-900" : "border-ink-200 bg-white hover:border-ink-300"}`}
     >
       <div className="mb-2 flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">

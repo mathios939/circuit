@@ -6,6 +6,7 @@ import { useIsMobile } from "@/hooks/useMediaQuery";
 import { Toast } from "@/components/ui/Feedback";
 import { useRouteStore } from "@/store/route-store";
 import { BuilderPanel } from "./BuilderPanel";
+import { DemoBanner } from "./DemoBanner";
 
 const RouteMap = dynamic(() => import("@/components/map/RouteMap").then((m) => m.RouteMap), {
   ssr: false,
@@ -37,16 +38,20 @@ export function AppShell() {
 
   if (!isMobile) {
     return (
-      <div className="flex h-full w-full overflow-hidden">
-        <aside className="flex w-[420px] shrink-0 flex-col border-r border-ink-200 bg-white" aria-label="Configuration du parcours">
-          <Header />
-          <div className="min-h-0 flex-1">
-            <BuilderPanel />
-          </div>
-        </aside>
-        <main className="relative min-w-0 flex-1">
-          <RouteMap fitPadding={{ top: 70, right: 60, bottom: 60, left: 60 }} />
-        </main>
+      <div className="flex h-full w-full flex-col overflow-hidden">
+        <SkipLink />
+        <DemoBanner />
+        <div className="flex min-h-0 flex-1">
+          <aside id="panel" className="flex w-[420px] shrink-0 flex-col border-r border-ink-200 bg-white" aria-label="Configuration du parcours">
+            <Header />
+            <div className="min-h-0 flex-1">
+              <BuilderPanel />
+            </div>
+          </aside>
+          <main className="relative min-w-0 flex-1" aria-label="Carte">
+            <RouteMap fitPadding={{ top: 70, right: 60, bottom: 60, left: 60 }} />
+          </main>
+        </div>
         <Toast message={toast} />
       </div>
     );
@@ -66,21 +71,41 @@ export function AppShell() {
     setSheet(order[Math.max(0, Math.min(order.length - 1, idx + (delta < 0 ? 1 : -1)))]!);
   };
 
+  const order: SheetState[] = ["peek", "half", "full"];
+  const move = (delta: 1 | -1) => setSheet(order[Math.max(0, Math.min(order.length - 1, order.indexOf(sheet) + delta))]!);
+
   return (
     <div className="relative h-full w-full overflow-hidden">
-      <main className="absolute inset-0">
+      <SkipLink />
+      <div className="absolute inset-x-0 top-0 z-30">
+        <DemoBanner />
+      </div>
+      <main className="absolute inset-0" aria-label="Carte">
         <RouteMap fitPadding={{ top: 80, right: 30, bottom: Math.round(window.innerHeight * 0.55), left: 30 }} />
       </main>
       <section
+        id="panel"
         aria-label="Configuration du parcours"
         className="absolute inset-x-0 bottom-0 z-20 flex flex-col rounded-t-2xl bg-white shadow-[0_-10px_40px_-12px_rgb(15_23_42_/_0.35)] transition-[height] duration-300"
         style={{ height: SHEET_HEIGHT[sheet] }}
       >
         <button
           type="button"
-          aria-label="Déplier ou replier le panneau"
-          className="flex shrink-0 flex-col items-center py-2"
+          aria-label={`Panneau ${sheet === "peek" ? "replié" : sheet === "half" ? "à mi-hauteur" : "déplié"} : cliquer pour changer, flèches haut/bas pour ajuster`}
+          aria-expanded={sheet !== "peek"}
+          className="flex shrink-0 flex-col items-center py-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
           onClick={() => setSheet(sheet === "full" ? "half" : sheet === "half" ? "full" : "half")}
+          onKeyDown={(e) => {
+            if (e.key === "ArrowUp") {
+              e.preventDefault();
+              move(1);
+            } else if (e.key === "ArrowDown") {
+              e.preventDefault();
+              move(-1);
+            } else if (e.key === "Escape") {
+              setSheet("peek");
+            }
+          }}
           onTouchStart={onTouchStart}
           onTouchEnd={onTouchEnd}
         >
@@ -93,6 +118,18 @@ export function AppShell() {
       </section>
       <Toast message={toast} />
     </div>
+  );
+}
+
+/** Keyboard users can jump straight to the configuration panel. */
+function SkipLink() {
+  return (
+    <a
+      href="#panel"
+      className="sr-only z-50 rounded-lg bg-ink-900 px-3 py-2 text-sm text-white focus:not-sr-only focus:absolute focus:left-3 focus:top-3"
+    >
+      Aller au panneau de configuration
+    </a>
   );
 }
 

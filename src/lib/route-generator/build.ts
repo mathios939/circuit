@@ -1,4 +1,4 @@
-import type { RoutePoint, RouteRequest, RouteResult, RouteSegment, RouteStyle, RouteWaypoint } from "@/lib/types";
+import type { RouteDebugInfo, RoutePoint, RouteQualityReport, RouteRequest, RouteResult, RouteSegment, RouteStyle, RouteWaypoint } from "@/lib/types";
 import { ACTIVITY_LABELS, getActivityProfile } from "@/lib/activities/profiles";
 import { computeBBox, toRoutePoints } from "@/lib/geo";
 import { buildInsights, computeRouteDNA, scoreRoute } from "@/lib/scoring";
@@ -19,6 +19,8 @@ export interface BuildRouteInput {
   provider: string;
   name?: string;
   id?: string;
+  quality?: RouteQualityReport;
+  debug?: Omit<RouteDebugInfo, "pointCount" | "rawAscentM">;
 }
 
 /**
@@ -56,6 +58,9 @@ export function buildRouteResult(input: BuildRouteInput): RouteResult {
     createdAt: new Date().toISOString(),
     bbox: computeBBox(points),
     request,
+    instructions: raw.instructions,
+    quality: input.quality,
+    debug: { ...(input.debug ?? {}), pointCount: points.length, rawAscentM: stats.ascentRawM },
   };
 }
 

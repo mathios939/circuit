@@ -1,7 +1,6 @@
 import type { RoutePoint } from "@/lib/types";
 import { samplePath } from "@/lib/geo";
 import { mapLimit } from "@/lib/utils/concurrency";
-import { smoothElevation } from "@/lib/stats/elevation-gain";
 import type { ElevationProvider } from "./provider";
 
 export interface EnrichOptions {
@@ -60,5 +59,7 @@ export async function enrichWithElevation(
     return { ...p, ele: Math.round((a.ele + (b.ele - a.ele) * t) * 10) / 10 };
   });
 
-  return { points: smoothElevation(enriched, 3), ok: true };
+  // Raw interpolated elevations are kept: filtering happens in the statistics
+  // (computeElevationGain) so that raw and filtered gains can be compared.
+  return { points: enriched, ok: true };
 }

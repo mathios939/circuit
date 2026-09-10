@@ -69,6 +69,16 @@ export function isAppError(e: unknown): e is AppError {
   return e instanceof AppError;
 }
 
+/**
+ * True when the failure comes from the service itself (timeout, 5xx, 429,
+ * network) rather than from the request (impossible route, invalid point).
+ * Only these failures justify switching to a fallback provider.
+ */
+export function isRetryableError(e: unknown): boolean {
+  if (!isAppError(e)) return true;
+  return e.code === "PROVIDER_TIMEOUT" || e.code === "PROVIDER_UNAVAILABLE" || e.code === "RATE_LIMITED" || e.code === "UNKNOWN";
+}
+
 /** Wraps any thrown value into an AppError without leaking internals. */
 export function toAppError(e: unknown): AppError {
   if (isAppError(e)) return e;

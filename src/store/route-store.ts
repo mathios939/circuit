@@ -1,7 +1,7 @@
 "use client";
 
 import { create } from "zustand";
-import type { ActivityType, LatLng, Place, RouteAdjustment, RouteMode, RoutePreferences, RouteRequest, RouteResult, RouteWaypoint } from "@/lib/types";
+import type { ActivityType, GenerationProgress, LatLng, Place, RouteAdjustment, RouteMode, RoutePreferences, RouteRequest, RouteResult, RouteWaypoint } from "@/lib/types";
 import { getActivityProfile } from "@/lib/activities/profiles";
 import { calculateRouteApi, errorMessage, generateRoutesApi, reverseGeocodeApi } from "@/lib/client/api";
 import { importGpxText } from "@/lib/client/import-gpx";
@@ -56,6 +56,12 @@ export interface RouteStore {
   notes: string[];
   selectedId: string | null;
   lastRequest: RouteRequest | null;
+  /** Current stage of the running generation (streamed by the server). */
+  progress: GenerationProgress | null;
+  /** Stages already completed, in order (for the progress list). */
+  progressHistory: GenerationProgress[];
+  /** Timings of the last generation, for the debug panel. */
+  lastTimings: Record<string, number> | null;
   generate(options?: { surprise?: boolean; request?: RouteRequest }): Promise<void>;
   adjust(adjustment: RouteAdjustment): Promise<void>;
   cancelGeneration(): void;
@@ -162,21 +168,41 @@ export const useRouteStore = create<RouteStore>()((set, get) => ({
   notes: [],
   selectedId: null,
   lastRequest: null,
+  progress: null,
+  progressHistory: [],
+  lastTimings: null,
   generate: async (options = {}) => {
     const s = get();
     const request = options.request ?? buildRequest(s, options.surprise ?? false);
     if (!request) return;
     generationAbort?.abort();
     generationAbort = new AbortController();
-    set({ status: "loading", error: null, editing: false, cutBuffer: [], undoStack: [], panelTab: "results", lastRequest: request });
+    const initial: GenerationProgress = { stage: "candidates", message: "Création des variantes" };
+    set({ status: "loading", error: null, editing: false, cutBuffer: [], undoStack: [], panelTab: "results", lastRequest: request, progress: initial, progressHistory: [], lastTimings: null });
     try {
-      const result = await generateRoutesApi(request, generationAbort.signal);
+      const result = await generateRoutesApi(request, {
+        signal: generationAbort.signal,
+        onProgress: (progress) => {
+          const current = get().progress;
+          const history = current && current.stage !== progress.stage ? [...get().progressHistory, current] : get().progressHistory;
+          set({ progress, progressHistory: history });
+        },
+      });
       const first = result.routes[0];
-      set({ status: "success", routes: result.routes, notes: result.notes, selectedId: first?.id ?? null, fitRequestId: get().fitRequestId + 1 });
+      set({
+        status: "success",
+        routes: result.routes,
+        notes: result.notes,
+        selectedId: first?.id ?? null,
+        fitRequestId: get().fitRequestId + 1,
+        progress: null,
+        progressHistory: [],
+        lastTimings: { ...result.timings, routingCalls: result.routingCalls, candidatesEvaluated: result.candidatesEvaluated },
+      });
       if (first) void getRouteRepository().recordHistory(first).then(() => get().refreshSaved());
     } catch (e) {
       if (e instanceof DOMException && e.name === "AbortError") return;
-      set({ status: "error", error: errorMessage(e), routes: [], notes: [], selectedId: null });
+      set({ status: "error", error: errorMessage(e), routes: [], notes: [], selectedId: null, progress: null, progressHistory: [] });
     }
   },
   adjust: async (adjustment) => {
@@ -188,7 +214,7 @@ export const useRouteStore = create<RouteStore>()((set, get) => ({
   },
   cancelGeneration: () => {
     generationAbort?.abort();
-    set({ status: get().routes.length > 0 ? "success" : "idle" });
+    set({ status: get().routes.length > 0 ? "success" : "idle", progress: null, progressHistory: [] });
   },
   selectRoute: (id) => set({ selectedId: id, editing: false, cutBuffer: [], undoStack: [], fitRequestId: get().fitRequestId + 1 }),
   clearResults: () => set({ routes: [], notes: [], selectedId: null, status: "idle", error: null, editing: false, undoStack: [] }),

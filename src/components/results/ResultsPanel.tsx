@@ -1,12 +1,14 @@
 "use client";
 
 import { ArrowLeft } from "lucide-react";
-import { ErrorBanner, InfoNote, Spinner } from "@/components/ui/Feedback";
+import { ErrorBanner, InfoNote } from "@/components/ui/Feedback";
 import { Button } from "@/components/ui/Button";
 import { EditorToolbar } from "@/components/editor/EditorToolbar";
 import { AdjustButtons } from "./AdjustButtons";
 import { ElevationProfile } from "./ElevationProfile";
 import { ExportMenu } from "./ExportMenu";
+import { GenerationProgressView } from "./GenerationProgress";
+import { RouteDebugPanel } from "./RouteDebugPanel";
 import { RouteDNA } from "./RouteDNA";
 import { RouteInsights } from "./RouteInsights";
 import { RouteStats } from "./RouteStats";
@@ -23,19 +25,7 @@ export function ResultsPanel() {
   const clear = useRouteStore((s) => s.clearResults);
   const route = useSelectedRoute();
 
-  if (status === "loading") {
-    return (
-      <div className="space-y-4 py-6">
-        <Spinner label="Recherche des meilleurs parcours…" />
-        <p className="text-xs text-ink-500">Nous explorons plusieurs directions, mesurons les distances réelles et ajustons les boucles. Cela prend généralement 5 à 20 secondes.</p>
-        <div className="space-y-2">
-          {[0, 1, 2].map((i) => (
-            <div key={i} className="h-20 animate-pulse-soft rounded-xl bg-ink-100" />
-          ))}
-        </div>
-      </div>
-    );
-  }
+  if (status === "loading") return <GenerationProgressView />;
 
   if (status === "error" && error) {
     return (
@@ -75,6 +65,7 @@ export function ResultsPanel() {
       <RouteInsights insights={route.insights} score={route.score} />
       <RouteDNA dna={route.dna} />
       <ExportMenu route={route} />
+      <RouteDebugPanel route={route} />
       <button type="button" onClick={() => setPanelTab("create")} className="flex w-full items-center justify-center gap-1.5 py-1 text-xs text-ink-500 hover:text-ink-900">
         <ArrowLeft className="h-3.5 w-3.5" /> Nouvelle demande
       </button>

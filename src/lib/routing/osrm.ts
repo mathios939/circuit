@@ -1,8 +1,9 @@
 import { z } from "zod";
 import { AppError } from "@/lib/errors";
-import { decodePolyline } from "@/lib/geo";
+import { decodePolyline, nearestPointIndex } from "@/lib/geo";
 import { fetchJson, UpstreamHttpError } from "@/lib/server/http";
 import { buildRoutingIntent } from "./intent";
+import { buildInstructions, countTurns, osrmManeuverType } from "./instructions";
 import type { CalculateMatrixInput, CalculateRouteInput, RawRoute, RoutingProfileOptions, RoutingProvider } from "./provider";
 
 export interface OsrmOptions {
@@ -22,7 +23,22 @@ const routeSchema = z.object({
         distance: z.number(),
         duration: z.number(),
         geometry: z.string(),
-        legs: z.array(z.object({ steps: z.array(z.unknown()).optional() })).optional(),
+        legs: z
+          .array(
+            z.object({
+              steps: z
+                .array(
+                  z.object({
+                    distance: z.number().optional(),
+                    duration: z.number().optional(),
+                    name: z.string().optional(),
+                    maneuver: z.object({ type: z.string().optional(), modifier: z.string().optional(), location: z.tuple([z.number(), z.number()]).optional() }).optional(),
+                  }),
+                )
+                .optional(),
+            }),
+          )
+          .optional(),
       }),
     )
     .optional(),
@@ -81,12 +97,29 @@ export class OsrmRoutingProvider implements RoutingProvider {
     const route = parsed.data.routes[0];
     const coordinates = decodePolyline(route.geometry, 6);
     if (coordinates.length < 2) throw new AppError("NO_ROUTE");
-    const steps = route.legs?.reduce((n, leg) => n + (leg.steps?.length ?? 0), 0);
+    const steps = route.legs?.flatMap((leg) => leg.steps ?? []);
+    const instructions = steps
+      ? buildInstructions(
+          coordinates,
+          steps.map((st) => {
+            const loc = st.maneuver?.location;
+            const pointIndex = loc ? nearestIndex(coordinates, { lat: loc[1], lng: loc[0] }) : 0;
+            return {
+              distanceM: st.distance ?? 0,
+              durationS: st.duration,
+              type: osrmManeuverType(st.maneuver?.type, st.maneuver?.modifier),
+              streetName: st.name,
+              pointIndex,
+            };
+          }),
+        )
+      : undefined;
     return {
       coordinates,
       distanceM: route.distance,
       durationS: route.duration,
-      turnCount: steps !== undefined ? Math.max(0, steps - 2) : undefined,
+      turnCount: instructions ? countTurns(instructions) : undefined,
+      instructions,
     };
   }
 
@@ -106,4 +139,8 @@ export class OsrmRoutingProvider implements RoutingProvider {
     if (!parsed.success || !parsed.data.distances) throw new AppError("PROVIDER_UNAVAILABLE", undefined, { details: "osrm: unexpected table response" });
     return parsed.data.distances.map((row) => row.map((d) => d ?? Infinity));
   }
+}
+
+function nearestIndex(coords: readonly { lat: number; lng: number }[], target: { lat: number; lng: number }): number {
+  return nearestPointIndex(coords, target).index;
 }

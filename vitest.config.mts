@@ -5,11 +5,12 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "src"),
+      "server-only": path.resolve(__dirname, "src/test/server-only-stub.ts"),
     },
   },
   test: {
     environment: "node",
     include: ["src/**/*.test.ts"],
-    exclude: ["e2e/**", "node_modules/**", ".next/**"],
+    exclude: ["e2e/**", "node_modules/**", ".next/**", "tests/integration/**"],
   },
 });

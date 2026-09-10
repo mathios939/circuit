@@ -1,0 +1,29 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<gpx version="1.1" creator="https://www.komoot.de" xmlns="http://www.topografix.com/GPX/1/1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/1/1/gpx.xsd">
+  <metadata>
+    <name>Tour du lac – VTT</name>
+    <author>
+      <link href="https://www.komoot.de">
+        <text>komoot</text>
+        <type>text/html</type>
+      </link>
+    </author>
+  </metadata>
+  <trk>
+    <name>Tour du lac – VTT</name>
+    <trkseg>
+      <trkpt lat="45.857500" lon="6.173800">
+        <ele>446.900000</ele>
+        <time>2024-07-01T08:00:00.000Z</time>
+      </trkpt>
+      <trkpt lat="45.858900" lon="6.176100">
+        <ele>452.300000</ele>
+        <time>2024-07-01T08:01:10.000Z</time>
+      </trkpt>
+      <trkpt lat="45.860200" lon="6.178900">
+        <ele>460.000000</ele>
+        <time>2024-07-01T08:02:30.000Z</time>
+      </trkpt>
+    </trkseg>
+  </trk>
+</gpx>

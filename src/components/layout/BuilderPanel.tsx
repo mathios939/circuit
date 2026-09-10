@@ -27,7 +27,7 @@ export function BuilderPanel() {
             aria-selected={tab === t.id}
             data-testid={`tab-${t.id}`}
             onClick={() => setTab(t.id)}
-            className={`relative px-3 py-2.5 text-sm font-medium transition-colors ${tab === t.id ? "text-ink-900" : "text-ink-500 hover:text-ink-900"}`}
+            className={`relative rounded-t-lg px-3 py-2.5 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 ${tab === t.id ? "text-ink-900" : "text-ink-500 hover:text-ink-900"}`}
           >
             {t.label}
             {t.id === "results" && routeCount > 0 ? <span className="ml-1.5 rounded-full bg-brand-100 px-1.5 text-[10px] font-semibold text-brand-700">{routeCount}</span> : null}

@@ -27,7 +27,10 @@ export default defineConfig({
   },
   projects: [
     { name: "chromium", use: { ...devices["Desktop Chrome"] } },
+    // ~412 px Android phone, ~390 px iPhone (Chromium engine) and a tablet.
     { name: "mobile", use: { ...devices["Pixel 7"] } },
+    { name: "iphone", use: { ...devices["iPhone 14"], defaultBrowserType: "chromium" } },
+    { name: "tablet", use: { ...devices["iPad Mini"], defaultBrowserType: "chromium" } },
   ],
   webServer: {
     // E2E runs against a production build and the deterministic mock
@@ -41,9 +44,15 @@ export default defineConfig({
       ROUTING_PROVIDER: "mock",
       GEOCODING_PROVIDER: "mock",
       ELEVATION_PROVIDER: "mock",
+      // Production build + synthetic providers: explicit opt-in required.
+      ALLOW_MOCK_PROVIDERS: "true",
       NEXT_PUBLIC_MAP_PROVIDER: "openfreemap",
       // Many generations in a row from one IP: do not trip the rate limiter.
       RATE_LIMIT_PER_MINUTE: "5000",
+      RATE_LIMIT_DIAGNOSTICS_PER_MINUTE: "1000",
+      // Small explicit bucket so that the rate-limit test can trip it deterministically.
+      RATE_LIMIT_IMPORT_PER_MINUTE: "5",
+      DIAGNOSTICS_ENABLED: "true",
     },
   },
 });

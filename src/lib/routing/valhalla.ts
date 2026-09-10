@@ -4,6 +4,7 @@ import { AppError } from "@/lib/errors";
 import { decodePolyline, encodePolyline } from "@/lib/geo";
 import { fetchJson, UpstreamHttpError } from "@/lib/server/http";
 import { normaliseSurface, normaliseWay } from "./attributes";
+import { buildInstructions, countTurns, valhallaManeuverType, type InstructionInput } from "./instructions";
 import { buildRoutingIntent, type RoutingIntent } from "./intent";
 import type {
   CalculateMatrixInput,
@@ -24,7 +25,18 @@ const tripSchema = z.object({
       z.object({
         shape: z.string(),
         summary: z.object({ length: z.number(), time: z.number() }).partial(),
-        maneuvers: z.array(z.object({ type: z.number().optional() })).optional(),
+        maneuvers: z
+          .array(
+            z.object({
+              type: z.number().optional(),
+              instruction: z.string().optional(),
+              street_names: z.array(z.string()).optional(),
+              time: z.number().optional(),
+              length: z.number().optional(),
+              begin_shape_index: z.number().optional(),
+            }),
+          )
+          .optional(),
       }),
     ),
     summary: z.object({ length: z.number(), time: z.number() }),
@@ -72,7 +84,6 @@ export function buildValhallaCosting(profile: RoutingProfileOptions): {
     use_ferry: intent.avoidFerries ? 0 : 0.5,
     use_living_streets: intent.useQuietStreets,
     use_hills: intent.useHills,
-    use_tracks: intent.useTrails,
     shortest: intent.shortest,
   };
   const options =
@@ -87,6 +98,7 @@ export function buildValhallaCosting(profile: RoutingProfileOptions): {
       : {
           ...shared,
           walking_speed: intent.speedKmh,
+          use_tracks: intent.useTrails,
           max_hiking_difficulty: intent.maxHikingDifficulty,
           step_penalty: 15,
         };
@@ -170,21 +182,33 @@ export class ValhallaRoutingProvider implements RoutingProvider {
     }
     const trip = parsed.data.trip;
     const coordinates: LatLng[] = [];
-    let turnCount = 0;
+    const inputs: InstructionInput[] = [];
     for (const leg of trip.legs) {
       const pts = decodePolyline(leg.shape, 6);
       // Legs share their boundary point; skip duplicates.
+      const offset = coordinates.length > 0 ? coordinates.length - 1 : 0;
       const start = coordinates.length > 0 ? 1 : 0;
       for (let i = start; i < pts.length; i++) coordinates.push(pts[i]!);
-      turnCount += leg.maneuvers?.length ?? 0;
+      for (const m of leg.maneuvers ?? []) {
+        inputs.push({
+          distanceM: (m.length ?? 0) * 1000,
+          durationS: m.time,
+          type: valhallaManeuverType(m.type),
+          streetName: m.street_names?.[0],
+          pointIndex: offset + (m.begin_shape_index ?? 0),
+          text: m.instruction,
+        });
+      }
     }
     if (coordinates.length < 2) throw new AppError("NO_ROUTE");
+    const instructions = buildInstructions(coordinates, inputs);
 
     return {
       coordinates,
       distanceM: trip.summary.length * 1000,
       durationS: trip.summary.time,
-      turnCount: Math.max(0, turnCount - 2), // minus depart + arrive
+      turnCount: countTurns(instructions),
+      instructions,
     };
   }
 

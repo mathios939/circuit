@@ -3,6 +3,7 @@ import { AppError } from "@/lib/errors";
 import { fetchJson, UpstreamHttpError } from "@/lib/server/http";
 import type { SurfaceType, WayType } from "@/lib/types";
 import { buildRoutingIntent } from "./intent";
+import { buildInstructions, countTurns, orsStepType } from "./instructions";
 import type {
   CalculateLoopInput,
   CalculateRouteInput,
@@ -26,7 +27,24 @@ const responseSchema = z.object({
       geometry: z.object({ coordinates: z.array(z.array(z.number()).min(2)) }),
       properties: z.object({
         summary: z.object({ distance: z.number(), duration: z.number().optional() }),
-        segments: z.array(z.object({ steps: z.array(z.unknown()).optional() })).optional(),
+        segments: z
+          .array(
+            z.object({
+              steps: z
+                .array(
+                  z.object({
+                    distance: z.number().optional(),
+                    duration: z.number().optional(),
+                    type: z.number().optional(),
+                    instruction: z.string().optional(),
+                    name: z.string().optional(),
+                    way_points: z.tuple([z.number(), z.number()]).optional(),
+                  }),
+                )
+                .optional(),
+            }),
+          )
+          .optional(),
         extras: z.object({ surface: extraSchema.optional(), waytypes: extraSchema.optional() }).partial().optional(),
       }),
     }),
@@ -177,14 +195,28 @@ export class OpenRouteServiceRoutingProvider implements RoutingProvider {
       (v) => ORS_SURFACE[Number(v)] ?? "unknown",
       (v) => ORS_WAYTYPE[Number(v)] ?? "other",
     );
-    const steps = feature.properties.segments?.reduce((n, s) => n + (s.steps?.length ?? 0), 0);
+    const steps = feature.properties.segments?.flatMap((s) => s.steps ?? []);
+    const instructions = steps
+      ? buildInstructions(
+          coordinates,
+          steps.map((st) => ({
+            distanceM: st.distance ?? 0,
+            durationS: st.duration,
+            type: orsStepType(st.type),
+            streetName: st.name && st.name !== "-" ? st.name : undefined,
+            pointIndex: st.way_points?.[0] ?? 0,
+            text: st.instruction,
+          })),
+        )
+      : undefined;
 
     return {
       coordinates,
       distanceM: feature.properties.summary.distance,
       durationS: feature.properties.summary.duration,
-      turnCount: steps !== undefined ? Math.max(0, steps - 2) : undefined,
+      turnCount: instructions ? countTurns(instructions) : undefined,
       segments,
+      instructions,
     };
   }
 
