@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getGeocodingProvider, type GeocodeResult } from "@/lib/geocoding";
+import { geocodingError, getGeocodingProvider, type GeocodeResult } from "@/lib/geocoding";
 import { createRequestContext, enforceRateLimit, errorResponse, jsonResponse, parseSearchParams } from "@/lib/server/api";
 import { getGlobalCache, memoizeAsync } from "@/lib/server/cache";
 import { geocodeQuerySchema } from "@/lib/validation/schemas";
@@ -24,6 +24,6 @@ export async function GET(request: Request): Promise<NextResponse> {
     const results = await ctx.logger.time("geocode", { provider: provider.id, cached }, () => memo(key, () => provider.search(params.q, { limit: params.limit ?? 6, near, lang: "fr" })));
     return jsonResponse({ results }, ctx, { cacheControl: "private, max-age=300" });
   } catch (e) {
-    return errorResponse(e, ctx);
+    return errorResponse(geocodingError(e), ctx);
   }
 }

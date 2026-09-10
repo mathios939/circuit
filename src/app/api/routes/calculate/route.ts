@@ -10,6 +10,8 @@ import type { RouteRequest, RouteWaypoint } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+/** One routing call plus elevation: 2 × ROUTING_TIMEOUT_MS (40 s by default) fits under this ceiling. */
+export const maxDuration = 60;
 
 /** POST /api/routes/calculate — routes through explicit waypoints (editor / recalculation). */
 export async function POST(request: Request): Promise<NextResponse> {

@@ -12,10 +12,11 @@ interface PageProps {
 export async function generateMetadata({ searchParams }: PageProps): Promise<Metadata> {
   const { d } = await searchParams;
   const shared = d ? decodeSharedRoute(d) : null;
-  if (!shared) return { title: "Parcours partagé — Circuit" };
+  if (!shared) return { title: "Parcours partagé", robots: { index: false, follow: false } };
   const last = shared.points[shared.points.length - 1];
   return {
-    title: `${shared.name} — Circuit`,
+    title: shared.name,
+    robots: { index: false, follow: false },
     description: `${ACTIVITY_LABELS[shared.activity]} · ${formatDistance(last?.dist ?? 0)}`,
   };
 }

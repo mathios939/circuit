@@ -1,5 +1,5 @@
 import type { GenerationProgress, RouteGenerationResult } from "@/lib/types";
-import { toAppError } from "@/lib/errors";
+import { AppError, toAppError } from "@/lib/errors";
 import { getElevationProvider } from "@/lib/elevation";
 import { getRoutingProvider } from "@/lib/routing";
 import { generateRoutes } from "@/lib/route-generator";
@@ -9,6 +9,12 @@ import { routeRequestSchema } from "@/lib/validation/schemas";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+/**
+ * Platform ceiling for one generation (Vercel: seconds). The application
+ * deadline (GENERATION_TIMEOUT_MS, 55 s by default) stays below it so that a
+ * slow engine produces a readable error event, never a truncated stream.
+ */
+export const maxDuration = 60;
 
 /** Events streamed to the client as newline-delimited JSON. */
 type GenerateStreamEvent =
@@ -41,6 +47,7 @@ export async function POST(request: Request): Promise<Response> {
   const elevation = getElevationProvider();
   const encoder = new TextEncoder();
   const logger = ctx.logger.child({ routeMode: body.mode, activity: body.activity, provider: routing.id });
+  const deadline = AbortSignal.timeout(env.routing.generationTimeoutMs);
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
@@ -54,7 +61,7 @@ export async function POST(request: Request): Promise<Response> {
           candidateCount: env.routing.candidateCount,
           maxIterations: env.routing.maxIterations,
           maxRoutingCalls: env.routing.maxRoutingCalls,
-          signal: AbortSignal.any([request.signal, AbortSignal.timeout(env.routing.timeoutMs * 6)]),
+          signal: AbortSignal.any([request.signal, deadline]),
           onProgress: (progress) => send({ type: "progress", progress }),
         });
         logger.info("generation completed", {
@@ -67,9 +74,10 @@ export async function POST(request: Request): Promise<Response> {
         });
         send({ type: "result", result });
       } catch (e) {
-        const error = toAppError(e);
+        // Whatever failed first once the deadline passed, the honest message is "too slow".
+        const error = deadline.aborted ? new AppError("PROVIDER_TIMEOUT", undefined, { details: `generation deadline of ${env.routing.generationTimeoutMs} ms exceeded`, cause: e }) : toAppError(e);
         logger.warn("generation failed", { code: error.code, details: error.details, durationMs: Math.round(performance.now() - ctx.startedAt), status: "error", error: error.cause });
-        send({ type: "error", error: { code: error.code, message: error.message } });
+        if (!request.signal.aborted) send({ type: "error", error: { code: error.code, message: error.message } });
       } finally {
         controller.close();
       }

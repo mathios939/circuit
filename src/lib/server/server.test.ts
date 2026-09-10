@@ -120,6 +120,14 @@ describe("server env validation", () => {
     expect(defaults.env!.warnings.some((w) => w.includes("GEOCODING_USER_AGENT"))).toBe(true);
     expect(parseServerEnv({ NODE_ENV: "development", ROUTING_PROVIDER: "osrm", ROUTING_OSRM_URL: "http://localhost:5000" }).env!.warnings).toEqual([]);
   });
+  it("bounds the whole generation below the platform function limit", () => {
+    expect(parseServerEnv(base).env!.routing.generationTimeoutMs).toBe(55_000);
+    expect(parseServerEnv({ ...base, GENERATION_TIMEOUT_MS: "1000" }).errors[0]).toMatch(/GENERATION_TIMEOUT_MS/);
+    const long = parseServerEnv({ NODE_ENV: "production", GENERATION_TIMEOUT_MS: "120000", GEOCODING_USER_AGENT: "my-app/1.0 (ops@example.com)" });
+    expect(long.env!.warnings.some((w) => w.includes("GENERATION_TIMEOUT_MS"))).toBe(true);
+    const http = parseServerEnv({ NODE_ENV: "production", NEXT_PUBLIC_SITE_URL: "http://circuit.example.com", GEOCODING_USER_AGENT: "my-app/1.0 (ops@example.com)" });
+    expect(http.env!.warnings.some((w) => w.includes("NEXT_PUBLIC_SITE_URL"))).toBe(true);
+  });
   it("honours primary/fallback routing and demo mode", () => {
     const { env } = parseServerEnv({ ...base, ROUTING_PROVIDER_PRIMARY: "osrm", ROUTING_OSRM_URL: "http://localhost:5000", ROUTING_PROVIDER_FALLBACK: "valhalla" });
     expect(env!.routing.provider).toBe("osrm");

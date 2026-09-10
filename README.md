@@ -59,8 +59,37 @@ Toutes les variables sont documentées dans [`.env.example`](.env.example), sép
 | `ELEVATION_PROVIDER` / `ELEVATION_PROVIDER_FALLBACK` | `open-meteo` / `valhalla` | Dernier recours : parcours sans altitude, signalé |
 | `RATE_LIMIT_PER_MINUTE` | `60` | Base des limites par IP et par bucket (geocoding, generation, calculate, import, diagnostics) |
 | `DIAGNOSTICS_ENABLED` | dev : `true`, prod : `false` | Écran `/diagnostics` et sondes `/api/health?probe=1` |
+| `GENERATION_TIMEOUT_MS` | `55000` | Borne d'une génération complète, sous la limite de la plateforme |
 | `NEXT_PUBLIC_MAP_PROVIDER` / `NEXT_PUBLIC_MAPTILER_KEY` | `openfreemap` / – | Fond de carte ; clé MapTiler publique à restreindre par domaine |
+| `NEXT_PUBLIC_SITE_URL` | URL Vercel | URL canonique (métadonnées, Open Graph, robots, sitemap) ; à changer avec le domaine |
 | `NEXT_PUBLIC_DEMO_MODE` | `false` | Fournisseurs synthétiques + bandeau « Mode démo » |
+
+### Déploiement sur Vercel
+
+Vercel détecte Next.js automatiquement : `npm install` puis `npm run build`, aucun Dockerfile ni fichier `vercel.json` n'est nécessaire. Les routes API tournent sur le runtime Node.js (MapLibre, `fast-xml-parser` et le streaming NDJSON ne visent pas l'Edge) avec `maxDuration = 60` sur la génération et le recalcul ; l'application borne elle-même une génération à `GENERATION_TIMEOUT_MS` (55 s) pour renvoyer une erreur lisible plutôt qu'une réponse tronquée.
+
+1. Importer le dépôt `mathios939/circuit` dans Vercel (Add New → Project), branche de production `main`. Les pull requests créent des Preview Deployments.
+2. Renseigner les variables d'environnement (Settings → Environment Variables), **jamais dans le code** :
+
+   | Variable | Environnements | Valeur initiale conseillée |
+   | --- | --- | --- |
+   | `ROUTING_PROVIDER_PRIMARY` | Production, Preview | `valhalla` |
+   | `ROUTING_VALHALLA_URL` | Production, Preview | URL de votre instance Valhalla (l'instance FOSSGIS n'est tolérable que pour une bêta à très faible trafic) |
+   | `GEOCODING_PROVIDER` | Production, Preview | `photon` |
+   | `GEOCODING_USER_AGENT` | Production, Preview | `circuit/1.0 (+https://<votre-site>; contact@…)` |
+   | `ELEVATION_PROVIDER` | Production, Preview | `open-meteo` |
+   | `NEXT_PUBLIC_MAP_PROVIDER` | Production, Preview | `openfreemap` |
+   | `NEXT_PUBLIC_SITE_URL` | Production | `https://<projet>.vercel.app`, puis le domaine personnalisé |
+   | `DIAGNOSTICS_ENABLED` | Production | `false` (peut valoir `true` en Preview pour tester les sondes) |
+   | `ALLOW_MOCK_PROVIDERS` | Production, Preview | `false` |
+   | `LOG_FORMAT` | Production | `json` |
+
+   Optionnelles selon le fournisseur : `GRAPHHOPPER_API_KEY`, `OPENROUTESERVICE_API_KEY`, `ROUTING_OSRM_URL`, `ROUTING_PROVIDER_FALLBACK`, `GEOCODING_NOMINATIM_EMAIL`, `NEXT_PUBLIC_MAPTILER_KEY` (clé **publique**, à restreindre par domaine dans MapTiler). Aucune clé secrète ne doit porter le préfixe `NEXT_PUBLIC_`.
+3. Région des fonctions : choisir une région européenne (Paris `cdg1` ou Francfort `fra1`) dans Settings → Functions, les fournisseurs de routing étant hébergés en Europe.
+4. Après le premier déploiement, vérifier `https://<site>/api/health` (`{"status":"ok"}`), puis le scénario principal (Vélo de route · Annecy · Boucle · 50 km · Générer mes parcours · Télécharger GPX). Pour tester les fournisseurs réels depuis Vercel, activer temporairement `DIAGNOSTICS_ENABLED=true` sur un Preview et ouvrir `/diagnostics`.
+5. Domaine personnalisé : Vercel → Project → Settings → Domains → Add Domain, configurer les DNS demandés, puis mettre `NEXT_PUBLIC_SITE_URL` à jour. Aucun changement de code.
+
+Le rate limiting et les caches sont en mémoire : sur Vercel ils sont propres à chaque instance de fonction, ce qui reste acceptable pour une bêta (la limite est simplement moins stricte).
 
 ### Production
 

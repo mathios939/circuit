@@ -133,6 +133,27 @@ test.describe("main flow", () => {
     expect(json.name).toContain("Circuit");
   });
 
+  test("SEO routes: robots, sitemap, Open Graph image and metadata", async ({ page }) => {
+    const robots = await page.request.get("/robots.txt");
+    expect(robots.ok()).toBe(true);
+    const robotsText = await robots.text();
+    expect(robotsText).toMatch(/Disallow: \/diagnostics/);
+    expect(robotsText).toMatch(/Disallow: \/api\//);
+    expect(robotsText).toMatch(/Sitemap: https?:\/\//);
+    const sitemap = await page.request.get("/sitemap.xml");
+    expect(sitemap.ok()).toBe(true);
+    expect(await sitemap.text()).toContain("/about");
+    const og = await page.request.get("/opengraph-image");
+    expect(og.ok()).toBe(true);
+    expect(og.headers()["content-type"]).toContain("image/png");
+    await page.goto("/");
+    await expect(page).toHaveTitle("Circuit — Créez vos parcours vélo, running et trail");
+    expect(await page.locator('meta[property="og:title"]').getAttribute("content")).toContain("Circuit");
+    expect(await page.locator('link[rel="manifest"]').getAttribute("href")).toContain("manifest");
+    await page.goto("/diagnostics");
+    expect(await page.locator('meta[name="robots"]').getAttribute("content")).toMatch(/noindex/);
+  });
+
   test("interprets a natural-language request and generates", async ({ page }) => {
     await openApp(page);
     await page.getByTestId("nl-input").fill("Je veux une boucle VTT de 35 km au départ d'Annecy avec environ 800 m de D+");
@@ -188,9 +209,12 @@ test.describe("operations", () => {
   test("health endpoint reports the configured providers and probes succeed on the mock stack", async ({ request }) => {
     const health = await request.get("/api/health");
     expect(health.ok()).toBe(true);
-    const body = (await health.json()) as { status: string; configuration: { routing: { primary: string } } };
+    const body = (await health.json()) as { status: string; providers: { routing: string }; configuration: { routing: { primary: string } } };
     expect(body.status).toBe("ok");
+    expect(body.providers.routing).toBe("mock");
+    // Diagnostics are enabled in the E2E environment: the configuration summary is present, without any key.
     expect(body.configuration.routing.primary).toBe("mock");
+    expect(JSON.stringify(body)).not.toMatch(/key=|apiKey":"[A-Za-z0-9]/i);
     const probed = await request.get("/api/health?probe=1");
     expect(probed.ok()).toBe(true);
     const json = (await probed.json()) as { probes: { category: string; provider: string; status: string; latencyMs?: number }[] };

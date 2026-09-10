@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getGeocodingProvider, type GeocodeResult } from "@/lib/geocoding";
+import { geocodingError, getGeocodingProvider, type GeocodeResult } from "@/lib/geocoding";
 import { createRequestContext, enforceRateLimit, errorResponse, jsonResponse, parseSearchParams } from "@/lib/server/api";
 import { getGlobalCache, memoizeAsync } from "@/lib/server/cache";
 import { reverseQuerySchema } from "@/lib/validation/schemas";
@@ -22,6 +22,6 @@ export async function GET(request: Request): Promise<NextResponse> {
     const result = await ctx.logger.time("reverse-geocode", { provider: provider.id }, () => memo(key, async () => (await provider.reverse({ lat, lng }, { lang: "fr" })) ?? null));
     return jsonResponse({ result }, ctx, { cacheControl: "private, max-age=300" });
   } catch (e) {
-    return errorResponse(e, ctx);
+    return errorResponse(geocodingError(e), ctx);
   }
 }

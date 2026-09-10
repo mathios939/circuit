@@ -3,16 +3,20 @@ import { AppError } from "@/lib/errors";
 import { createRequestContext, enforceRateLimit, errorResponse, jsonResponse } from "@/lib/server/api";
 import { describeConfiguration, runDiagnostics } from "@/lib/server/diagnostics";
 import { getServerEnv } from "@/lib/server/env";
+import { version } from "../../../../package.json";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 30;
 
 /**
- * GET /api/health — application status and configuration summary (no secret).
- * GET /api/health?probe=1 — additionally calls every configured provider
- * with a tiny request and reports latency / errors. Probes are only allowed
- * when diagnostics are enabled (development by default, or
- * DIAGNOSTICS_ENABLED=true) and are rate limited.
+ * GET /api/health — liveness check. Always public, never sensitive:
+ *   { status: "ok", version, time, providers: { routing, geocoding, elevation } }
+ *
+ * The detailed configuration summary (limits, fallbacks, key presence,
+ * configuration warnings) and the provider probes (`?probe=1`) are only
+ * returned when diagnostics are enabled (development by default, or
+ * DIAGNOSTICS_ENABLED=true), and probes are rate limited.
  */
 export async function GET(request: Request): Promise<NextResponse> {
   const ctx = createRequestContext(request, "health");
@@ -22,12 +26,19 @@ export async function GET(request: Request): Promise<NextResponse> {
       env = getServerEnv();
     } catch (e) {
       const err = e instanceof AppError ? e : new AppError("NOT_CONFIGURED");
-      return NextResponse.json({ status: "misconfigured", message: err.message }, { status: 500, headers: { "x-request-id": ctx.requestId } });
+      return NextResponse.json({ status: "misconfigured", message: err.message }, { status: 500, headers: { "x-request-id": ctx.requestId, "Cache-Control": "no-store" } });
     }
+    const diagnostics = env.observability.diagnosticsEnabled;
     const probe = new URL(request.url).searchParams.get("probe") === "1";
-    const base = { status: "ok" as const, version: process.env.npm_package_version ?? "0.1.0", time: new Date().toISOString(), configuration: describeConfiguration() };
+    const base = {
+      status: "ok" as const,
+      version,
+      time: new Date().toISOString(),
+      providers: { routing: env.routing.provider, geocoding: env.geocoding.provider, elevation: env.elevation.provider },
+      ...(diagnostics ? { configuration: describeConfiguration() } : {}),
+    };
     if (!probe) return jsonResponse(base, ctx);
-    if (!env.observability.diagnosticsEnabled) {
+    if (!diagnostics) {
       throw new AppError("INVALID_REQUEST", "Les diagnostics sont désactivés (DIAGNOSTICS_ENABLED=false).", { status: 403 });
     }
     enforceRateLimit(request, "diagnostics");

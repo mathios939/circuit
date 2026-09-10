@@ -51,6 +51,13 @@ const schema = z.object({
   ROUTING_OSRM_BICYCLE_PROFILE: z.preprocess(emptyToUndefined, z.string().default("bike")),
   ROUTING_OSRM_PEDESTRIAN_PROFILE: z.preprocess(emptyToUndefined, z.string().default("foot")),
   ROUTING_TIMEOUT_MS: intBetween(1000, 120_000, 20_000),
+  /**
+   * Upper bound of one whole generation (all routing + elevation calls). Must
+   * stay below the platform's function limit (Vercel: `maxDuration`, 60 s on
+   * the API routes) so that a slow engine yields a readable timeout, not a
+   * truncated response.
+   */
+  GENERATION_TIMEOUT_MS: intBetween(5_000, 290_000, 55_000),
   ROUTING_CONCURRENCY: intBetween(1, 10, 3),
   ROUTE_CANDIDATE_COUNT: intBetween(3, 30, 12),
   ROUTE_MAX_ITERATIONS: intBetween(0, 5, 2),
@@ -86,6 +93,9 @@ const schema = z.object({
   DIAGNOSTICS_ENABLED: z.preprocess(emptyToUndefined, z.enum(["true", "false"]).optional()),
 
   NL_PARSER: z.preprocess(emptyToUndefined, z.enum(["rules"]).default("rules")),
+
+  // ----- public site URL (client-visible, not a secret)
+  NEXT_PUBLIC_SITE_URL: url,
 });
 
 export type RawServerEnv = z.infer<typeof schema>;
@@ -107,6 +117,7 @@ function build(raw: RawServerEnv) {
     osrmBicycleProfile: raw.ROUTING_OSRM_BICYCLE_PROFILE,
     osrmPedestrianProfile: raw.ROUTING_OSRM_PEDESTRIAN_PROFILE,
     timeoutMs: raw.ROUTING_TIMEOUT_MS,
+    generationTimeoutMs: raw.GENERATION_TIMEOUT_MS,
     concurrency: raw.ROUTING_CONCURRENCY,
     candidateCount: raw.ROUTE_CANDIDATE_COUNT,
     maxIterations: raw.ROUTE_MAX_ITERATIONS,
@@ -186,6 +197,8 @@ function build(raw: RawServerEnv) {
     if (diagnosticsEnabled) warnings.push("DIAGNOSTICS_ENABLED=true expose /diagnostics et /api/health?probe=1 en production (limité en débit, mais public)");
     if (raw.ALLOW_MOCK_PROVIDERS && !demo) warnings.push("ALLOW_MOCK_PROVIDERS=true en production : réservé aux tests E2E");
     if (routing.provider === "valhalla" && routing.valhallaUrl === "https://valhalla1.openstreetmap.de") warnings.push("ROUTING_VALHALLA_URL utilise l'instance publique FOSSGIS : réservée à un usage modéré, pas à un trafic de production");
+    if (raw.NEXT_PUBLIC_SITE_URL && raw.NEXT_PUBLIC_SITE_URL.startsWith("http://")) warnings.push("NEXT_PUBLIC_SITE_URL n'est pas en HTTPS : les métadonnées et le sitemap pointeront vers une adresse non sécurisée");
+    if (routing.generationTimeoutMs > 60_000) warnings.push("GENERATION_TIMEOUT_MS dépasse 60 s : vérifiez que la plateforme autorise des fonctions aussi longues (Vercel : maxDuration)");
     if (geocoding.userAgent === DEFAULT_USER_AGENT) warnings.push("GEOCODING_USER_AGENT n'identifie pas votre déploiement (contact demandé par Photon / Nominatim)");
   }
 

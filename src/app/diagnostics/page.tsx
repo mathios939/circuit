@@ -1,8 +1,11 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { DiagnosticsView } from "@/components/diagnostics/DiagnosticsView";
 import { getServerEnv } from "@/lib/server/env";
 
 export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = { title: "Diagnostics", robots: { index: false, follow: false } };
 
 /**
  * /diagnostics — provider health screen. Enabled in development by default;
