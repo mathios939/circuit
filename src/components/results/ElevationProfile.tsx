@@ -5,6 +5,7 @@ import type { RouteResult } from "@/lib/types";
 import { pointAtDistance, samplePath } from "@/lib/geo";
 import { filterElevationSeries } from "@/lib/stats/elevation-gain";
 import { formatDistance, formatElevation } from "@/lib/utils/format";
+import { COLORS } from "@/lib/ui/colors";
 import { useRouteStore } from "@/store/route-store";
 
 const W = 600;
@@ -89,7 +90,7 @@ export function ElevationProfile({ route }: { route: RouteResult }) {
           ? segments.map((seg, i) => <path key={i} d={seg.d} fill={seg.color} opacity={0.85} />)
           : null}
         <path d={areaPath} fill="url(#elev-fill)" opacity={0.15} />
-        <path d={linePath} fill="none" stroke="#111827" strokeWidth={1.2} />
+        <path d={linePath} fill="none" stroke={COLORS.ink} strokeWidth={1.2} />
         {kmTicks.map((km) => (
           <text key={km} x={xOf(km * 1000)} y={H - 6} textAnchor="middle" fontSize={9} fill="#6b7280">
             {km} km
@@ -97,13 +98,13 @@ export function ElevationProfile({ route }: { route: RouteResult }) {
         ))}
         {hover && typeof hover.ele === "number" ? (
           <g>
-            <line x1={xOf(hover.dist)} x2={xOf(hover.dist)} y1={PAD.top} y2={H - PAD.bottom} stroke="#ff5a1f" strokeWidth={1} strokeDasharray="3 2" />
-            <circle cx={xOf(hover.dist)} cy={yOf(hover.ele)} r={4} fill="#ff5a1f" stroke="#fff" strokeWidth={1.5} />
+            <line x1={xOf(hover.dist)} x2={xOf(hover.dist)} y1={PAD.top} y2={H - PAD.bottom} stroke={COLORS.route} strokeWidth={1} strokeDasharray="3 2" />
+            <circle cx={xOf(hover.dist)} cy={yOf(hover.ele)} r={4} fill={COLORS.route} stroke="#fff" strokeWidth={1.5} />
           </g>
         ) : null}
         <defs>
           <linearGradient id="elev-fill" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0%" stopColor="#111827" />
+            <stop offset="0%" stopColor={COLORS.ink} />
             <stop offset="100%" stopColor="#ffffff" />
           </linearGradient>
         </defs>

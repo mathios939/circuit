@@ -1,7 +1,7 @@
 import type { GenerationProgress, RouteGenerationResult, RoutePreferences, RouteRequest, RouteResult, RouteStyle, RouteWaypoint } from "@/lib/types";
 import type { GeocodeResult } from "@/lib/geocoding/provider";
 import type { RouteIntent } from "@/lib/nl/parser";
-import { USER_MESSAGES, type AppErrorCode } from "@/lib/errors";
+import { USER_HINTS, USER_MESSAGES, type AppErrorCode } from "@/lib/errors";
 
 /** Error surfaced to the UI: always carries a user-friendly French message. */
 export class ApiError extends Error {
@@ -138,4 +138,11 @@ export function errorMessage(e: unknown): string {
   if (e instanceof ApiError) return e.message;
   if (e instanceof DOMException && e.name === "AbortError") return "Requête annulée.";
   return USER_MESSAGES.UNKNOWN;
+}
+
+/** Actionable hint matching the error, when one exists. */
+export function errorHint(e: unknown): string | null {
+  if (e instanceof ApiError) return USER_HINTS[e.code] ?? null;
+  if (e instanceof DOMException && e.name === "AbortError") return null;
+  return USER_HINTS.UNKNOWN ?? null;
 }

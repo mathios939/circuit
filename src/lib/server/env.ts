@@ -16,6 +16,8 @@ export type RoutingProviderId = (typeof ROUTING_IDS)[number];
 export type GeocodingProviderId = (typeof GEOCODING_IDS)[number];
 export type ElevationProviderId = (typeof ELEVATION_IDS)[number];
 
+const DEFAULT_USER_AGENT = "circuit-app/1.0 (https://github.com/mathios939/circuit)";
+
 const emptyToUndefined = (v: unknown) => (typeof v === "string" && v.trim() === "" ? undefined : v);
 const url = z.preprocess(emptyToUndefined, z.string().url().optional());
 const intBetween = (min: number, max: number, fallback: number) =>
@@ -60,7 +62,7 @@ const schema = z.object({
   GEOCODING_PHOTON_URL: url.default("https://photon.komoot.io"),
   GEOCODING_NOMINATIM_URL: url.default("https://nominatim.openstreetmap.org"),
   GEOCODING_NOMINATIM_EMAIL: z.preprocess(emptyToUndefined, z.string().email().optional()),
-  GEOCODING_USER_AGENT: z.preprocess(emptyToUndefined, z.string().min(5).default("circuit-app/0.1 (https://github.com/mathios939/circuit)")),
+  GEOCODING_USER_AGENT: z.preprocess(emptyToUndefined, z.string().min(5).default(DEFAULT_USER_AGENT)),
 
   // ----- elevation
   ELEVATION_PROVIDER: z.preprocess(emptyToUndefined, z.enum(ELEVATION_IDS).default("open-meteo")),
@@ -166,6 +168,27 @@ function build(raw: RawServerEnv) {
     if (mockRefused && elevation.provider === "mock") problems.push("ELEVATION_PROVIDER=mock est réservé aux tests (NODE_ENV=production sans ALLOW_MOCK_PROVIDERS=true)");
   }
 
+  // Non-blocking warnings: the configuration works but is not what a
+  // production deployment usually wants. Logged once at startup and shown on
+  // /api/health so that they are not silently forgotten.
+  const warnings: string[] = [];
+  if (!isDev) {
+    const local = (label: string, value: string | undefined) => {
+      if (value && /^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])(:|\/|$)/i.test(value)) warnings.push(`${label} pointe vers une adresse locale (${value})`);
+    };
+    local("ROUTING_VALHALLA_URL", routing.provider === "valhalla" || routing.fallback === "valhalla" ? routing.valhallaUrl : undefined);
+    local("ROUTING_OSRM_URL", routing.osrmUrl);
+    local("GEOCODING_PHOTON_URL", geocoding.photonUrl);
+    local("GEOCODING_NOMINATIM_URL", geocoding.nominatimUrl);
+    local("ELEVATION_OPEN_METEO_URL", elevation.openMeteoUrl);
+    local("ELEVATION_OPENTOPODATA_URL", elevation.openTopoDataUrl);
+    const diagnosticsEnabled = raw.DIAGNOSTICS_ENABLED === "true";
+    if (diagnosticsEnabled) warnings.push("DIAGNOSTICS_ENABLED=true expose /diagnostics et /api/health?probe=1 en production (limité en débit, mais public)");
+    if (raw.ALLOW_MOCK_PROVIDERS && !demo) warnings.push("ALLOW_MOCK_PROVIDERS=true en production : réservé aux tests E2E");
+    if (routing.provider === "valhalla" && routing.valhallaUrl === "https://valhalla1.openstreetmap.de") warnings.push("ROUTING_VALHALLA_URL utilise l'instance publique FOSSGIS : réservée à un usage modéré, pas à un trafic de production");
+    if (geocoding.userAgent === DEFAULT_USER_AGENT) warnings.push("GEOCODING_USER_AGENT n'identifie pas votre déploiement (contact demandé par Photon / Nominatim)");
+  }
+
   return {
     nodeEnv: raw.NODE_ENV,
     isDev,
@@ -181,6 +204,7 @@ function build(raw: RawServerEnv) {
     },
     nl: { parser: raw.NL_PARSER },
     problems,
+    warnings,
   };
 }
 
@@ -207,11 +231,6 @@ export function getServerEnv(): ServerEnv {
   }
   cached = env;
   return env;
-}
-
-/** Test helper: forget the memoised configuration. */
-export function resetServerEnvCache(): void {
-  cached = undefined;
 }
 
 /** Parses an arbitrary environment object (used by tests and diagnostics). */

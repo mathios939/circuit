@@ -1,7 +1,10 @@
 import type { ActivityProfile, LatLng, RouteQualityReport, RouteSegment } from "@/lib/types";
 import { bearing, haversineDistance } from "@/lib/geo";
 import { clamp } from "@/lib/utils/format";
+import { ROUTE_ENGINE } from "./config";
 import { computeOverlapRatio } from "./overlap";
+
+const Q = ROUTE_ENGINE.quality;
 
 export interface QualityInput {
   coordinates: readonly LatLng[];
@@ -9,26 +12,37 @@ export interface QualityInput {
   distanceM: number;
   targetM?: number;
   start: LatLng;
-  waypointCount: number;
+  /** Waypoints used to build the route, in order (start … end). */
+  waypoints: readonly LatLng[];
   isLoop: boolean;
   profile: ActivityProfile;
   segments?: readonly RouteSegment[];
-  /** Acceptable distance error ratio (default 0.10). */
+  /** Acceptable distance error ratio (default: ROUTE_ENGINE.distance.maxTolerance). */
   maxDistanceError?: number;
 }
 
 /**
  * Post-routing quality gate. A route that the engine happily computed can
  * still be a poor sports route: mostly out-and-back, folded on itself,
- * absurdly short, or built on ways unsuited to the activity. This report is
- * used to reject candidates before they are shown and to rank the others.
+ * absurdly short, or built on ways unsuited to the activity.
+ *
+ * Rules (thresholds in ROUTE_ENGINE.quality):
+ * - geometryValid: enough points, finite coordinates, no jump > maxJumpM,
+ *   path length consistent with the engine distance, loop closed;
+ * - distance: |distance − target| / target ≤ maxDistanceError;
+ * - loops: outAndBackRatio ≤ maxOutAndBackRatio and overlapRatio ≤ maxOverlapRatio;
+ * - U-turns per km ≤ maxUTurnsPerKm;
+ * - loops: farthest point ≥ minExtentRatio × distance (not folded on itself);
+ * - activityCompatibility ≥ minActivityCompatibility when surface data exists.
+ * The 0..100 qualityScore weights distance accuracy, out-and-back, overlap,
+ * U-turns, activity compatibility and waypoint spacing.
  */
 export function assessRouteQuality(input: QualityInput): RouteQualityReport {
   const { coordinates, distanceM, targetM, start, profile } = input;
   const reasons: string[] = [];
 
   // --- geometry sanity ------------------------------------------------------
-  let geometryValid = coordinates.length >= 4 && Number.isFinite(distanceM) && distanceM > 200;
+  let geometryValid = coordinates.length >= Q.minPoints && Number.isFinite(distanceM) && distanceM > Q.minDistanceM;
   if (!geometryValid) reasons.push("Géométrie trop courte ou incomplète");
   let pathLength = 0;
   for (let i = 1; i < coordinates.length && geometryValid; i++) {
@@ -40,18 +54,18 @@ export function assessRouteQuality(input: QualityInput): RouteQualityReport {
       break;
     }
     const d = haversineDistance(a, b);
-    if (d > 3000) {
+    if (d > Q.maxJumpM) {
       geometryValid = false;
       reasons.push("Saut anormal dans le tracé");
       break;
     }
     pathLength += d;
   }
-  if (geometryValid && (pathLength < distanceM * 0.5 || pathLength > distanceM * 1.5)) {
+  if (geometryValid && (pathLength < distanceM * Q.lengthConsistency || pathLength > distanceM / Q.lengthConsistency)) {
     geometryValid = false;
     reasons.push("Longueur de la géométrie incohérente avec la distance annoncée");
   }
-  if (geometryValid && input.isLoop && haversineDistance(coordinates[0]!, coordinates[coordinates.length - 1]!) > 250) {
+  if (geometryValid && input.isLoop && haversineDistance(coordinates[0]!, coordinates[coordinates.length - 1]!) > Q.loopClosureM) {
     geometryValid = false;
     reasons.push("La boucle ne revient pas au départ");
   }
@@ -59,17 +73,20 @@ export function assessRouteQuality(input: QualityInput): RouteQualityReport {
   // --- distance ---------------------------------------------------------------
   const distanceError = targetM ? Math.abs(distanceM - targetM) / targetM : 0;
   const distanceAccuracy = clamp(1 - distanceError, 0, 1);
-  const maxDistanceError = input.maxDistanceError ?? 0.1;
-  if (targetM && distanceError > maxDistanceError) reasons.push(`Distance hors tolérance (${Math.round(distanceError * 100)} %)`);
+  const maxDistanceError = input.maxDistanceError ?? ROUTE_ENGINE.distance.maxTolerance;
+  const distanceRejected = targetM !== undefined && distanceError > maxDistanceError;
+  if (distanceRejected) reasons.push(`Distance hors tolérance (${Math.round(distanceError * 100)} %)`);
 
   // --- overlap / out-and-back / u-turns ---------------------------------------
-  const overlapRatio = computeOverlapRatio(coordinates);
-  const outAndBackRatio = computeOutAndBackRatio(coordinates);
-  const uTurnCount = countUTurns(coordinates);
-  if (input.isLoop && outAndBackRatio > 0.35) reasons.push(`Trop d'aller-retour (${Math.round(outAndBackRatio * 100)} %)`);
-  else if (input.isLoop && overlapRatio > 0.45) reasons.push(`Tracé trop souvent répété (${Math.round(overlapRatio * 100)} %)`);
+  const overlapRatio = computeOverlapRatio(coordinates, Q.cellM);
+  const outAndBackRatio = computeOutAndBackRatio(coordinates, Q.cellM);
+  const uTurnCount = countUTurns(coordinates, Q.uTurnWindowM, Q.uTurnAngle);
   const uTurnsPerKm = uTurnCount / Math.max(1, distanceM / 1000);
-  if (uTurnsPerKm > 1.2) reasons.push(`Trop de demi-tours (${uTurnCount})`);
+  const shapeRejected = input.isLoop && (outAndBackRatio > Q.maxOutAndBackRatio || overlapRatio > Q.maxOverlapRatio);
+  if (input.isLoop && outAndBackRatio > Q.maxOutAndBackRatio) reasons.push(`Trop d'aller-retour (${Math.round(outAndBackRatio * 100)} %)`);
+  else if (input.isLoop && overlapRatio > Q.maxOverlapRatio) reasons.push(`Tracé trop souvent répété (${Math.round(overlapRatio * 100)} %)`);
+  const uTurnsRejected = uTurnsPerKm > Q.maxUTurnsPerKm;
+  if (uTurnsRejected) reasons.push(`Trop de demi-tours (${uTurnCount})`);
 
   // --- extent -------------------------------------------------------------------
   let maxDistanceFromStartM = 0;
@@ -77,29 +94,29 @@ export function assessRouteQuality(input: QualityInput): RouteQualityReport {
     const d = haversineDistance(start, p);
     if (d > maxDistanceFromStartM) maxDistanceFromStartM = d;
   }
-  // A loop that never gets farther than 8 % of its length from the start is folded on itself.
-  if (input.isLoop && geometryValid && maxDistanceFromStartM < distanceM * 0.08) reasons.push("Boucle repliée sur elle-même");
+  const foldedRejected = input.isLoop && geometryValid && maxDistanceFromStartM < distanceM * Q.minExtentRatio;
+  if (foldedRejected) reasons.push("Boucle repliée sur elle-même");
 
   // --- activity compatibility ---------------------------------------------------
   const activityCompatibility = compatibility(input.segments, profile);
-  if (activityCompatibility < 0.2) reasons.push("Voies peu adaptées à l'activité");
+  const compatibilityRejected = activityCompatibility < Q.minActivityCompatibility;
+  if (compatibilityRejected) reasons.push("Voies peu adaptées à l'activité");
+
+  // --- waypoint spacing ---------------------------------------------------------
+  const waypointQuality = computeWaypointQuality(input.waypoints, distanceM, input.isLoop);
 
   // --- score ----------------------------------------------------------------------
+  const w = Q.weights;
   const score =
-    distanceAccuracy * 35 +
-    (1 - clamp(outAndBackRatio * 2.5, 0, 1)) * 25 +
-    (1 - clamp(overlapRatio * 2, 0, 1)) * 15 +
-    (1 - clamp(uTurnsPerKm / 2, 0, 1)) * 10 +
-    activityCompatibility * 15;
+    distanceAccuracy * w.distance +
+    (1 - clamp(outAndBackRatio / Q.maxOutAndBackRatio, 0, 1)) * w.outAndBack +
+    (1 - clamp(overlapRatio / Q.maxOverlapRatio, 0, 1)) * w.overlap +
+    (1 - clamp(uTurnsPerKm / (Q.maxUTurnsPerKm * 1.5), 0, 1)) * w.uTurns +
+    activityCompatibility * w.compatibility +
+    waypointQuality * w.waypoints;
   const qualityScore = geometryValid ? Math.round(clamp(score, 0, 100)) : 0;
 
-  const rejected =
-    !geometryValid ||
-    (targetM !== undefined && distanceError > maxDistanceError) ||
-    (input.isLoop && (outAndBackRatio > 0.35 || overlapRatio > 0.45)) ||
-    uTurnsPerKm > 1.2 ||
-    (input.isLoop && geometryValid && maxDistanceFromStartM < distanceM * 0.08) ||
-    activityCompatibility < 0.2;
+  const rejected = !geometryValid || distanceRejected || shapeRejected || uTurnsRejected || foldedRejected || compatibilityRejected;
 
   return {
     distanceAccuracy: round3(distanceAccuracy),
@@ -107,9 +124,10 @@ export function assessRouteQuality(input: QualityInput): RouteQualityReport {
     outAndBackRatio: round3(outAndBackRatio),
     uTurnCount,
     maxDistanceFromStartM: Math.round(maxDistanceFromStartM),
-    waypointCount: input.waypointCount,
+    waypointCount: input.waypoints.length,
     geometryValid,
     activityCompatibility: round3(activityCompatibility),
+    waypointQuality: round3(waypointQuality),
     qualityScore,
     rejected,
     reasons,
@@ -121,7 +139,7 @@ export function assessRouteQuality(input: QualityInput): RouteQualityReport {
  * direction* (classic out-and-back). Cells store the heading of the first
  * visit; a later visit with a heading ~180° apart counts as out-and-back.
  */
-export function computeOutAndBackRatio(points: readonly LatLng[], cellM = 40): number {
+export function computeOutAndBackRatio(points: readonly LatLng[], cellM = Q.cellM): number {
   if (points.length < 3) return 0;
   const lat0 = points[0]!.lat;
   const mLat = 111_320;
@@ -150,13 +168,11 @@ export function computeOutAndBackRatio(points: readonly LatLng[], cellM = 40): n
   return total > 0 ? Math.min(1, back / total) : 0;
 }
 
-/** Counts direction reversals (> 150° within ~60 m), which usually mean dead ends or artificial detours. */
-export function countUTurns(points: readonly LatLng[], windowM = 60): number {
+/** Counts direction reversals (> `angle`° within ~`windowM`), which usually mean dead ends or artificial detours. */
+export function countUTurns(points: readonly LatLng[], windowM = Q.uTurnWindowM, angle = Q.uTurnAngle): number {
   let count = 0;
   let lastTurnIndex = -10;
-  let i = 1;
-  while (i < points.length - 1) {
-    // Heading over a window before and after point i.
+  for (let i = 1; i < points.length - 1; i++) {
     let j = i;
     let before = 0;
     while (j > 0 && before < windowM) {
@@ -173,14 +189,32 @@ export function countUTurns(points: readonly LatLng[], windowM = 60): number {
       const h1 = bearing(points[j]!, points[i]!);
       const h2 = bearing(points[i]!, points[k]!);
       const diff = Math.abs(((h2 - h1 + 540) % 360) - 180);
-      if (diff > 150 && i - lastTurnIndex > 5) {
+      if (diff > angle && i - lastTurnIndex > 5) {
         count++;
         lastTurnIndex = i;
       }
     }
-    i++;
   }
   return count;
+}
+
+/**
+ * 1 when consecutive waypoints are spread along the route (straight-line
+ * spacing ≥ minSpacingRatio × distance), decreasing when two of them sit on
+ * top of each other, which produces pinched or doubled-back shapes.
+ */
+export function computeWaypointQuality(waypoints: readonly LatLng[], distanceM: number, isLoop: boolean): number {
+  const vias = isLoop ? waypoints.slice(0, -1) : waypoints;
+  if (vias.length <= 2 || distanceM <= 0) return 1;
+  const minSpacing = distanceM * ROUTE_ENGINE.waypoints.minSpacingRatio;
+  let worst = 1;
+  for (let i = 0; i < vias.length; i++) {
+    for (let j = i + 1; j < vias.length; j++) {
+      const d = haversineDistance(vias[i]!, vias[j]!);
+      worst = Math.min(worst, clamp(d / minSpacing, 0, 1));
+    }
+  }
+  return worst;
 }
 
 function compatibility(segments: readonly RouteSegment[] | undefined, profile: ActivityProfile): number {

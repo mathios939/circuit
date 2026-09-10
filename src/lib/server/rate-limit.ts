@@ -60,8 +60,3 @@ export const RATE_LIMIT_MESSAGES: Record<RateLimitBucket, string> = {
   import: "Trop d'analyses en peu de temps. Patientez un instant.",
   diagnostics: "Diagnostic déjà lancé récemment. Patientez une minute.",
 };
-
-/** Test helper. */
-export function resetRateLimits(): void {
-  store.clear();
-}

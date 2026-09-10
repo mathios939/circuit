@@ -1,6 +1,6 @@
 {
   "name": "circuit",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "description": "Générateur intelligent de parcours sportifs (vélo, VTT, gravel, course, trail, randonnée) basé sur OpenStreetMap.",
   "scripts": {
@@ -13,7 +13,9 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "check": "npm run typecheck && npm run lint && npm run test",
-    "test:integration": "vitest run --config vitest.integration.config.mts"
+    "test:integration": "vitest run --config vitest.integration.config.mts",
+    "campaign": "CIRCUIT_CAMPAIGN=1 vitest run --config vitest.integration.config.mts tests/integration/campaign.int.test.ts",
+    "check:all": "npm run typecheck && npm run lint && npm run test && npm run build && npm run test:e2e"
   },
   "dependencies": {
     "fast-xml-parser": "^5.11.1",

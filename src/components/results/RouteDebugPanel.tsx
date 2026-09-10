@@ -35,8 +35,11 @@ export function RouteDebugPanel({ route }: { route: RouteResult }) {
         <Row k="Demi-tours" v={q?.uTurnCount ?? "–"} />
         <Row k="Éloignement max" v={q ? formatDistance(q.maxDistanceFromStartM) : "–"} />
         <Row k="Compatibilité" v={q ? q.activityCompatibility.toFixed(2) : "–"} />
+        <Row k="Waypoints (qualité)" v={q ? q.waypointQuality.toFixed(2) : "–"} />
+        <Row k="Similarité / A" v={q?.similarityToBest !== undefined ? q.similarityToBest.toFixed(2) : "–"} />
         <Row k="Score total" v={route.score.total} />
-        <Row k="Route DNA" v={`N${route.dna.nature} C${route.dna.calm} D${route.dna.difficulty} T${route.dna.technical} P${route.dna.panorama}`} />
+        <Row k="Sous-scores" v={`dist ${route.score.summary.distance} · nat ${route.score.summary.nature} · calme ${route.score.summary.calm} · diff ${route.score.summary.difficulty} · var ${route.score.summary.variety}`} />
+        <Row k="Route DNA" v={`N${route.dna.nature} C${route.dna.calm} D${route.dna.difficulty} T${route.dna.technical} P${route.dna.panorama} V${route.dna.variety}`} />
         <Row k="Points" v={d?.pointCount ?? route.points.length} />
         <Row k="Waypoints" v={route.waypoints.map((w) => `${w.kind[0]}:${w.lat.toFixed(4)},${w.lng.toFixed(4)}`).join(" · ")} />
         <Row k="D+ brut / filtré" v={route.stats.hasElevation ? `${formatElevation(d?.rawAscentM ?? 0)} / ${formatElevation(route.stats.ascentM)}` : "–"} />

@@ -14,7 +14,7 @@ export class MockElevationProvider implements ElevationProvider {
   }
 }
 
-export function syntheticElevation(p: LatLng): number {
+function syntheticElevation(p: LatLng): number {
   const x = p.lng * 111;
   const y = p.lat * 111;
   return (

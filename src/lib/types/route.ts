@@ -115,9 +115,19 @@ export interface ScoreComponent {
 }
 
 export interface RouteScore {
-  /** Weighted total 0..100. */
+  /** Weighted total 0..100 ("Score Circuit"). */
   total: number;
   components: ScoreComponent[];
+  /** Five headline sub-scores (0..100) shown to the user, all estimations. */
+  summary: RouteScoreSummary;
+}
+
+export interface RouteScoreSummary {
+  distance: number;
+  nature: number;
+  calm: number;
+  difficulty: number;
+  variety: number;
 }
 
 export interface RouteInsight {
@@ -130,8 +140,11 @@ export interface RouteDNA {
   nature: number;
   calm: number;
   difficulty: number;
+  /** Technicity of the terrain (relevant for MTB, trail, hiking). */
   technical: number;
   panorama: number;
+  /** Diversity of the ground covered (few repeated sections, varied way types). */
+  variety: number;
   /** True when the underlying data is partial and the values are rough estimates. */
   estimated: boolean;
 }
@@ -218,6 +231,10 @@ export interface RouteQualityReport {
   geometryValid: boolean;
   /** 0..1 share of the distance on ways suited to the activity (0.5 when unknown). */
   activityCompatibility: number;
+  /** 0..1: how well the waypoints are spread along the route (1 = evenly spaced, no cluster). */
+  waypointQuality: number;
+  /** Similarity (0..1) with the best other proposal of the same generation, when known. */
+  similarityToBest?: number;
   /** Aggregated 0..100 score. */
   qualityScore: number;
   /** True when the route should not be shown. */
@@ -260,15 +277,21 @@ export interface RouteGenerationResult {
   routingCalls: number;
   /** Number of candidates evaluated before selection. */
   candidatesEvaluated: number;
+  /**
+   * Present when no proposal met the distance tolerance: the routes returned
+   * are the closest acceptable ones and the UI must say so.
+   */
+  distanceMismatch?: { requestedKm: number; bestKm: number };
 }
 
 /** Quick adjustments applied to an existing route. */
 export type RouteAdjustment =
   | "distance_plus"
   | "distance_minus"
-  | "elevation_plus"
-  | "elevation_minus"
+  | "easier"
+  | "harder"
   | "more_nature"
   | "more_rolling"
-  | "more_quiet"
-  | "more_technical";
+  | "less_elevation"
+  | "more_elevation"
+  | "more_quiet";

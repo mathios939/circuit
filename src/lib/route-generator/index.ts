@@ -12,7 +12,7 @@ import type {
 } from "@/lib/types";
 import { ROUTE_STYLES } from "@/lib/types";
 import { AppError } from "@/lib/errors";
-import { getActivityProfile } from "@/lib/activities/profiles";
+import { getActivityProfile, getStyleLabels } from "@/lib/activities/profiles";
 import { toRoutePoints } from "@/lib/geo";
 import { enrichWithElevation } from "@/lib/elevation/enrich";
 import type { ElevationProvider } from "@/lib/elevation/provider";
@@ -21,6 +21,7 @@ import { addComparativeInsights } from "@/lib/scoring";
 import { hashString } from "@/lib/utils/id";
 import { mapLimit, settledValues } from "@/lib/utils/concurrency";
 import { buildRouteResult, makeWaypoints } from "./build";
+import { ROUTE_ENGINE } from "./config";
 import { restyleLoop, searchLoops, type LoopCandidate } from "./loop";
 import { routePointToPoint } from "./point-to-point";
 import { assessRouteQuality } from "./quality";
@@ -30,6 +31,7 @@ export { adjustRequest, ADJUSTMENT_LABELS } from "./adjust";
 export { buildRouteResult } from "./build";
 export { assessRouteQuality } from "./quality";
 export { routeSimilarity } from "./similarity";
+export { ROUTE_ENGINE } from "./config";
 
 export interface GeneratorDependencies {
   routing: RoutingProvider;
@@ -49,9 +51,8 @@ export interface GeneratorDependencies {
   onProgress?(progress: GenerationProgress): void;
 }
 
-const STYLE_LABELS: Record<RouteStyle, string> = { fast: "Rapide", balanced: "Équilibrée", adventure: "Aventure" };
 /** Two proposals sharing more ground than this are not shown together. */
-export const MAX_VARIANT_SIMILARITY = 0.85;
+export const MAX_VARIANT_SIMILARITY = ROUTE_ENGINE.similarity.maxBetweenVariants;
 
 interface Draft {
   raw: RawRoute;
@@ -82,6 +83,8 @@ export async function generateRoutes(input: RouteRequest, deps: GeneratorDepende
   const styles = request.styles && request.styles.length > 0 ? request.styles : [...ROUTE_STYLES];
   const notes: string[] = [];
   const activityProfile = getActivityProfile(request.activity);
+  const STYLE_LABELS = getStyleLabels(request.activity);
+  let distanceMismatch: RouteGenerationResult["distanceMismatch"];
   const baseProfile: RoutingProfileOptions = { activity: request.activity, style: "balanced", preferences: request.preferences ?? {} };
   let routingCalls = 0;
   let candidatesEvaluated = 0;
@@ -91,13 +94,13 @@ export async function generateRoutes(input: RouteRequest, deps: GeneratorDepende
 
   if (request.mode === "loop") {
     const targetM = request.distanceKm! * 1000;
-    const tolerance = request.distanceTolerance ?? 0.05;
+    const tolerance = request.distanceTolerance ?? ROUTE_ENGINE.distance.tolerance;
     let announcedRouting = false;
     const search = await searchLoops(deps.routing, {
       start: request.start,
       targetM,
       tolerance,
-      maxTolerance: Math.max(0.1, tolerance * 2),
+      maxTolerance: Math.max(ROUTE_ENGINE.distance.maxTolerance, tolerance * 2),
       seed: request.seed!,
       profile: baseProfile,
       activityProfile,
@@ -106,7 +109,7 @@ export async function generateRoutes(input: RouteRequest, deps: GeneratorDepende
       maxRoutingCalls: deps.maxRoutingCalls,
       concurrency: deps.concurrency,
       signal: deps.signal,
-      keep: styles.length + 1,
+      keep: styles.length + ROUTE_ENGINE.candidates.spareKept,
       maxSimilarity: MAX_VARIANT_SIMILARITY,
       onProgress: ({ routingCalls: calls, evaluated }) => {
         if (!announcedRouting) {
@@ -124,6 +127,10 @@ export async function generateRoutes(input: RouteRequest, deps: GeneratorDepende
     notes.push(...search.notes);
     routingCalls += search.routingCalls;
     candidatesEvaluated += search.evaluated.length;
+    if (search.nearMiss) {
+      const best = search.candidates[0]!;
+      distanceMismatch = { requestedKm: request.distanceKm!, bestKm: Math.round(best.raw.distanceM / 100) / 10 };
+    }
 
     // The best candidate keeps the balanced costing it was computed with (when
     // requested); the others are re-routed with the remaining styles.
@@ -136,8 +143,9 @@ export async function generateRoutes(input: RouteRequest, deps: GeneratorDepende
       const candidate = takeCandidate() ?? search.candidates[0];
       if (!candidate) break;
       used.add(candidate);
-      if (style === "balanced") {
-        drafts.push(loopDraft(candidate, style, request));
+      // Near misses are presented as they are: no restyling that would drift the distance further.
+      if (style === "balanced" || search.nearMiss) {
+        drafts.push(loopDraft(candidate, search.nearMiss ? "balanced" : style, request));
         continue;
       }
       try {
@@ -146,7 +154,7 @@ export async function generateRoutes(input: RouteRequest, deps: GeneratorDepende
         candidatesEvaluated += 1;
         const c = restyled.candidate;
         // Restyled route unusable: keep the balanced geometry, honestly labelled.
-        if (c.quality.rejected || c.distanceError > Math.max(0.1, search.toleranceUsed)) {
+        if (c.quality.rejected || c.distanceError > Math.max(ROUTE_ENGINE.distance.maxTolerance, search.toleranceUsed)) {
           drafts.push(loopDraft(candidate, "balanced", request));
           notes.push(`La variante « ${STYLE_LABELS[style]} » n'a pas pu être construite dans la tolérance de distance.`);
         } else {
@@ -173,7 +181,7 @@ export async function generateRoutes(input: RouteRequest, deps: GeneratorDepende
           start: request.start,
           end: request.end!,
           targetM,
-          tolerance: request.distanceTolerance ?? 0.05,
+          tolerance: request.distanceTolerance ?? ROUTE_ENGINE.distance.tolerance,
           seed: request.seed!,
           profile: { ...baseProfile, style },
           signal: deps.signal,
@@ -190,15 +198,18 @@ export async function generateRoutes(input: RouteRequest, deps: GeneratorDepende
         distanceM: c.raw.distanceM,
         targetM,
         start: request.start,
-        waypointCount: c.waypoints.length,
+        waypoints: c.waypoints,
         isLoop: false,
         profile: activityProfile,
         segments: c.raw.segments,
-        maxDistanceError: Math.max(0.1, (request.distanceTolerance ?? 0.05) * 2),
+        maxDistanceError: Math.max(ROUTE_ENGINE.distance.maxTolerance, (request.distanceTolerance ?? ROUTE_ENGINE.distance.tolerance) * 2),
       });
       if (!quality.geometryValid) continue;
       if (targetM && quality.rejected && quality.reasons.some((r) => r.startsWith("Distance"))) {
-        notes.push(`La variante « ${STYLE_LABELS[style]} » ne peut pas atteindre la distance demandée entre ces deux points.`);
+        const bestKm = Math.round(c.raw.distanceM / 100) / 10;
+        if (!distanceMismatch || Math.abs(bestKm - request.distanceKm!) < Math.abs(distanceMismatch.bestKm - request.distanceKm!)) {
+          distanceMismatch = { requestedKm: request.distanceKm!, bestKm };
+        }
       }
       const coords = [{ ...request.start }, ...c.waypoints.slice(1, -1), { ...request.end }];
       drafts.push({
@@ -225,13 +236,14 @@ export async function generateRoutes(input: RouteRequest, deps: GeneratorDepende
   enter("scoring", "Sélection des meilleurs parcours");
   dedupe(routes);
   routes.sort((a, b) => b.score.total - a.score.total);
+  annotateSimilarity(routes);
   addComparativeInsights(routes);
   leave("scoring");
 
   if (!routes.some((r) => r.stats.hasElevation)) notes.push("Altitude indisponible : le dénivelé n'a pas pu être calculé.");
   timings.total = Math.round(performance.now() - startedAt);
   deps.onProgress?.({ stage: "done", message: "Terminé" });
-  return { routes, notes: [...new Set(notes)], provider: deps.routing.id, timings, routingCalls, candidatesEvaluated };
+  return { routes, notes: [...new Set(notes)], provider: deps.routing.id, timings, routingCalls, candidatesEvaluated, distanceMismatch };
 }
 
 /** Recalculates a route through explicit waypoints (manual editing). */
@@ -252,7 +264,7 @@ export async function recalculateRoute(
     coordinates: raw.coordinates,
     distanceM: raw.distanceM,
     start: first,
-    waypointCount: params.waypoints.length,
+    waypoints: params.waypoints,
     isLoop,
     profile: getActivityProfile(request.activity),
     segments: raw.segments,
@@ -319,7 +331,7 @@ async function finaliseRoute(
     debug: { ...(extra.debug ?? {}), timings },
   });
   timings.scoring = Math.round(performance.now() - scoringStart);
-  if (!extra.name) result.name = `${result.name} · ${STYLE_LABELS[style]}`;
+  if (!extra.name) result.name = `${result.name} · ${getStyleLabels(request.activity)[style]}`;
   return result;
 }
 
@@ -367,6 +379,19 @@ export function normaliseRequest(input: RouteRequest, options: { requireDistance
     request.seed = hashString(`${request.start.lat.toFixed(4)},${request.start.lng.toFixed(4)},${request.activity},${request.distanceKm ?? ""}`) % 100_000;
   }
   return request;
+}
+
+/** Records, for each proposal, how similar it is to the best other one (shown as "variety"). */
+function annotateSimilarity(routes: RouteResult[]): void {
+  for (const r of routes) {
+    if (!r.quality) continue;
+    let best = 0;
+    for (const other of routes) {
+      if (other === r) continue;
+      best = Math.max(best, routeSimilarity(r.points, other.points, ROUTE_ENGINE.similarity.cellM));
+    }
+    r.quality.similarityToBest = routes.length > 1 ? Math.round(best * 1000) / 1000 : undefined;
+  }
 }
 
 /** Removes proposals that are geometrically the same route (similarity ≥ MAX_VARIANT_SIMILARITY). */

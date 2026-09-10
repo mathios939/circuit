@@ -42,7 +42,10 @@ export function RouteMap({ fitPadding }: RouteMapProps) {
   // ----- map creation ---------------------------------------------------
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
-    const initial = basemaps.find((b) => b.id === basemapId) ?? basemaps[0]!;
+    // The map is created once; the basemap chosen at that moment is read from
+    // the store, later changes are applied by the "basemap switching" effect.
+    const initialId = useRouteStore.getState().basemapId;
+    const initial = basemaps.find((b) => b.id === initialId) ?? basemaps[0]!;
     const map = new MapLibreMap({
       container: containerRef.current,
       style: initial.style,
@@ -100,9 +103,7 @@ export function RouteMap({ fitPadding }: RouteMapProps) {
       mapRef.current = null;
       setReady(false);
     };
-    // The map is created once; basemap changes are handled below.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [basemaps]);
 
   // ----- basemap switching ---------------------------------------------
   useEffect(() => {
@@ -142,12 +143,14 @@ export function RouteMap({ fitPadding }: RouteMapProps) {
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !ready || !route) return;
-    const [w, s, e, n] = route.bbox;
+    if (!map || !ready) return;
+    // fitRequestId is the explicit trigger; the route is read from the store at that moment.
+    const state = useRouteStore.getState();
+    const current = state.routes.find((r) => r.id === state.selectedId);
+    if (!current) return;
+    const [w, s, e, n] = current.bbox;
     if (w === e && s === n) return;
     map.fitBounds([w, s, e, n], { padding: paddingRef.current ?? 60, duration: 700, maxZoom: 15 });
-    // fitRequestId is the explicit trigger; the route itself is read at that moment.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fitRequestId, ready]);
 
   // ----- cursor ------------------------------------------------------------

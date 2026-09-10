@@ -22,6 +22,8 @@ test.describe("main flow", () => {
   test("generates a road-cycling loop from Annecy and downloads a GPX", async ({ page }) => {
     await openApp(page);
     await expect(page.getByTestId("tab-create")).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByTestId("hero")).toContainText("Choisissez la distance. Circuit trouve la route.");
+    await expect(page.getByTestId("generate-button")).toHaveText(/Générer mes parcours/);
 
     // 1. activity
     await page.getByTestId("activity-road_cycling").click();
@@ -39,20 +41,30 @@ test.describe("main flow", () => {
     await expect(page.getByTestId("generation-progress")).toBeVisible();
     await expect(page.getByTestId("generation-progress")).toContainText("Calcul des itinéraires");
 
-    // 5. results: variants, stats, elevation profile
-    await expect(page.getByTestId("route-stats")).toBeVisible({ timeout: 30_000 });
+    // 5. results: summary, variants with comparison table, actions, profile, DNA, score
+    await expect(page.getByTestId("route-summary")).toBeVisible({ timeout: 30_000 });
     const cards = page.getByTestId("variant-card");
     await expect(cards.first()).toBeVisible();
     expect(await cards.count()).toBeGreaterThanOrEqual(2);
+    await expect(page.getByTestId("variant-table")).toBeVisible();
     const distanceText = await page.getByTestId("stat-distance").textContent();
     const km = Number(distanceText!.replace(/\s/g, "").replace("km", "").replace(",", "."));
     expect(km).toBeGreaterThan(44);
     expect(km).toBeLessThan(56);
     await expect(page.getByTestId("stat-ascent")).toContainText("m");
+    await expect(page.getByTestId("route-summary")).toContainText(/≈ \d+ (h|min)/);
+    await expect(page.getByTestId("route-summary")).toContainText(/Score Circuit \d+\/100/);
+    await expect(page.getByTestId("distance-mismatch")).toHaveCount(0);
+    await expect(page.getByTestId("route-actions")).toBeVisible();
     await expect(page.getByTestId("elevation-profile")).toBeVisible();
     await expect(page.getByRole("list", { name: "Légende des pentes" })).toBeVisible();
     await expect(page.getByTestId("route-dna")).toBeVisible();
-    await expect(page.getByTestId("route-insights")).toBeVisible();
+    // Road cycling: no "Technique" dimension, but "Variété".
+    await expect(page.getByTestId("route-dna")).toContainText("Variété");
+    await expect(page.getByTestId("route-dna")).not.toContainText("Technique");
+    await expect(page.getByTestId("route-insights")).toContainText("Tranquillité");
+    await expect(page.getByTestId("adjust-buttons")).toContainText("Plus calme");
+    await expect(page.getByTestId("disclaimer")).toBeVisible();
     await expect(page.getByTestId("demo-banner")).toHaveCount(0);
 
     // Switching variant updates the details.
@@ -64,7 +76,7 @@ test.describe("main flow", () => {
     const downloadPromise = page.waitForEvent("download");
     await page.getByTestId("download-button").click();
     const download = await downloadPromise;
-    expect(download.suggestedFilename()).toMatch(/^annecy-velo-\d+km\.gpx$/);
+    expect(download.suggestedFilename()).toMatch(/^annecy-velo-route-\d+km\.gpx$/);
     const path = await download.path();
     expect(path).toBeTruthy();
     const fs = await import("node:fs/promises");
@@ -83,13 +95,49 @@ test.describe("main flow", () => {
     const alert = page.getByTestId("error-banner");
     await expect(alert).toContainText(/accessible|praticable/i, { timeout: 30_000 });
     await expect(alert).not.toContainText(/stack|Error:/);
+    // An actionable hint accompanies the message.
+    await expect(page.getByTestId("error-hint")).toContainText(/carte|sentier|route/i);
+    // The user can go back and fix the request.
+    await page.getByRole("button", { name: "Modifier la demande" }).click();
+    await expect(page.getByTestId("tab-create")).toHaveAttribute("aria-selected", "true");
+  });
+
+  test("adjust buttons regenerate while keeping the request structure", async ({ page }) => {
+    await openApp(page);
+    await page.getByTestId("activity-trail_running").click();
+    await pickStart(page, "Chamonix", "Chamonix");
+    await page.getByTestId("distance-input").fill("20");
+    await page.getByTestId("generate-button").click();
+    await expect(page.getByTestId("route-summary")).toBeVisible({ timeout: 30_000 });
+    // Trail: activity-specific names and the Technique dimension.
+    await expect(page.getByTestId("variant-list")).toContainText(/Accessible|Équilibré|Sportif/);
+    await expect(page.getByTestId("route-dna")).toContainText("Technique");
+    const toKm = (s: string | null) => Number(s!.replace(/\s/g, "").replace("km", "").replace(",", "."));
+    const before = toKm(await page.getByTestId("stat-distance").textContent());
+    await page.getByRole("button", { name: "+5 km" }).click();
+    // The mock engine answers fast: poll the result instead of the transient progress view.
+    await expect.poll(async () => toKm(await page.getByTestId("stat-distance").textContent()), { timeout: 30_000 }).toBeGreaterThan(before + 2);
+    await page.getByTestId("tab-create").click();
+    await expect(page.getByTestId("distance-input")).toHaveValue(/^2[3-7]/);
+  });
+
+  test("about page states that routes are indicative", async ({ page }) => {
+    await page.goto("/about");
+    await expect(page.getByRole("heading", { level: 1, name: "Circuit" })).toBeVisible();
+    await expect(page.getByTestId("about-disclaimer")).toContainText(/indicatifs/);
+    await expect(page.getByTestId("about-disclaimer")).toContainText(/OpenStreetMap/);
+    const manifest = await page.request.get("/manifest.webmanifest");
+    expect(manifest.ok()).toBe(true);
+    const json = (await manifest.json()) as { display: string; name: string };
+    expect(json.display).toBe("standalone");
+    expect(json.name).toContain("Circuit");
   });
 
   test("interprets a natural-language request and generates", async ({ page }) => {
     await openApp(page);
     await page.getByTestId("nl-input").fill("Je veux une boucle VTT de 35 km au départ d'Annecy avec environ 800 m de D+");
     await page.getByTestId("nl-submit").click();
-    await expect(page.getByTestId("route-stats")).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByTestId("route-summary")).toBeVisible({ timeout: 30_000 });
     await page.getByTestId("tab-create").click();
     await expect(page.getByTestId("activity-mtb")).toHaveAttribute("aria-checked", "true");
     await expect(page.getByTestId("distance-input")).toHaveValue("35");
@@ -129,7 +177,7 @@ test.describe("main flow", () => {
     await expect(page.getByTestId("editor-toolbar")).toBeVisible();
     const undo = page.getByTestId("editor-toolbar").getByRole("button", { name: "Annuler" });
     await expect(undo).toBeDisabled();
-    await page.getByRole("button", { name: "Inverser" }).click();
+    await page.getByTestId("editor-toolbar").getByRole("button", { name: "Inverser" }).click();
     // The recalculation went through: the undo stack is no longer empty.
     await expect(undo).toBeEnabled({ timeout: 30_000 });
     await expect(page.getByTestId("route-stats")).toBeVisible();
@@ -152,6 +200,20 @@ test.describe("operations", () => {
       expect(typeof byCategory.get(c)?.latencyMs).toBe("number");
     }
     expect(JSON.stringify(json)).not.toMatch(/key=/i);
+  });
+
+  test("responses carry security headers and no server fingerprint", async ({ request }) => {
+    const res = await request.get("/");
+    expect(res.ok()).toBe(true);
+    const headers = res.headers();
+    expect(headers["x-content-type-options"]).toBe("nosniff");
+    expect(headers["x-frame-options"]).toBe("SAMEORIGIN");
+    expect(headers["referrer-policy"]).toBe("strict-origin-when-cross-origin");
+    expect(headers["permissions-policy"]).toContain("geolocation=(self)");
+    expect(headers["x-powered-by"]).toBeUndefined();
+    const api = await request.get("/api/health");
+    expect(api.headers()["cache-control"]).toContain("no-store");
+    expect(api.headers()["x-request-id"]).toBeTruthy();
   });
 
   test("diagnostics page lists every provider family", async ({ page }) => {

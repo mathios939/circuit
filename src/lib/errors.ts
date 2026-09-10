@@ -65,6 +65,22 @@ export const USER_MESSAGES: Record<AppErrorCode, string> = {
   UNKNOWN: "Une erreur inattendue s'est produite. Réessayez.",
 };
 
+/** Actionable hint displayed under the error message, per code. */
+export const USER_HINTS: Partial<Record<AppErrorCode, string>> = {
+  INVALID_REQUEST: "Vérifiez la distance (dans les limites de l'activité), le point de départ et, pour un trajet A → B, le point d'arrivée.",
+  PLACE_NOT_FOUND: "Ajoutez la ville ou le pays (ex. « Annecy, France ») ou placez le point directement sur la carte.",
+  NOT_ROUTABLE: "Choisissez un départ sur une rue, une route ou un sentier. Les points en pleine mer, en zone privée ou en haute montagne ne sont pas accessibles.",
+  NO_ROUTE: "Essayez une distance différente (±10 km), un autre style ou un départ plus proche d'un réseau de routes / chemins.",
+  DISTANCE_UNREALISTIC: "Adaptez la distance aux limites de l'activité, ou changez d'activité.",
+  PROVIDER_UNAVAILABLE: "Le problème vient du service de routing, pas de votre demande : votre parcours est conservé, réessayez dans une minute.",
+  PROVIDER_TIMEOUT: "Les longues distances demandent plus de calcul : réduisez la distance ou réessayez dans quelques instants.",
+  RATE_LIMITED: "Les instances publiques de routing sont partagées : attendez une minute avant de relancer une génération.",
+  GPX_INVALID: "Le fichier doit être un GPX contenant une trace (<trk>) ou un itinéraire (<rte>) avec des coordonnées.",
+  GPX_TOO_LARGE: "Simplifiez la trace (moins de points) ou exportez-la depuis votre application avec moins de précision.",
+  NOT_CONFIGURED: "Vérifiez les variables d'environnement du serveur (voir .env.example).",
+  UNKNOWN: "Si le problème persiste, rechargez la page ou réessayez plus tard.",
+};
+
 export function isAppError(e: unknown): e is AppError {
   return e instanceof AppError;
 }

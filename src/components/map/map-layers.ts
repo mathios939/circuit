@@ -1,6 +1,7 @@
 import type { Feature, FeatureCollection, LineString, Point } from "geojson";
 import type { GeoJSONSource, Map as MapLibreMap } from "maplibre-gl";
 import type { LatLng, RoutePoint, RouteResult } from "@/lib/types";
+import { COLORS } from "@/lib/ui/colors";
 
 /**
  * Imperative helpers managing the map sources / layers used to display
@@ -8,8 +9,8 @@ import type { LatLng, RoutePoint, RouteResult } from "@/lib/types";
  * change (`style.load`) without re-rendering anything.
  */
 
-const ROUTE_COLOR = "#ff5a1f";
-const ALT_COLOR = "#64748b";
+const ROUTE_COLOR = COLORS.route;
+const ALT_COLOR = COLORS.routeAlt;
 
 export const LAYERS = {
   altLine: "routes-alt-line",
@@ -91,7 +92,7 @@ export function ensureRouteLayers(map: MapLibreMap): void {
       id: LAYERS.cut,
       type: "circle",
       source: "cut-points",
-      paint: { "circle-radius": 8, "circle-color": "#111827", "circle-stroke-color": "#ffffff", "circle-stroke-width": 2.5 },
+      paint: { "circle-radius": 8, "circle-color": COLORS.ink, "circle-stroke-color": "#ffffff", "circle-stroke-width": 2.5 },
     });
   }
 }

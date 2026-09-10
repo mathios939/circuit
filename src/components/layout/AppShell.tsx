@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { useIsMobile } from "@/hooks/useMediaQuery";
 import { Toast } from "@/components/ui/Feedback";
@@ -110,7 +111,7 @@ export function AppShell() {
           onTouchEnd={onTouchEnd}
         >
           <span className="h-1.5 w-12 rounded-full bg-ink-300" />
-          <span className="mt-1 text-xs font-semibold text-ink-900">Circuit</span>
+          <span className="mt-1 font-display text-xs font-semibold text-ink-900">Circuit</span>
         </button>
         <div className="min-h-0 flex-1">
           <BuilderPanel />
@@ -135,17 +136,30 @@ function SkipLink() {
 
 function Header() {
   return (
-    <header className="flex shrink-0 items-center gap-3 px-5 pb-1 pt-4">
-      <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-ink-900 text-white" aria-hidden>
-        <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M5 17a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm14 0a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z" />
-          <path d="M5 13c4-8 10 8 14 0" />
-        </svg>
-      </span>
-      <div>
-        <h1 className="text-base font-bold leading-tight text-ink-900">Circuit</h1>
-        <p className="text-xs text-ink-500">Générateur intelligent de parcours</p>
+    <header className="flex shrink-0 items-center justify-between gap-3 px-5 pb-1 pt-4">
+      <div className="flex items-center gap-3">
+        <Logo />
+        <div>
+          <h1 className="font-display text-base font-bold leading-tight tracking-tight text-ink-900">Circuit</h1>
+          <p className="text-xs text-ink-500">Boucles et itinéraires sur mesure</p>
+        </div>
       </div>
+      <Link href="/about" className="rounded-lg px-2 py-1 text-xs text-ink-500 hover:bg-ink-100 hover:text-ink-900">
+        À propos
+      </Link>
     </header>
+  );
+}
+
+/** Circuit mark: a loop closing on itself. */
+export function Logo({ className = "h-9 w-9" }: { className?: string }) {
+  return (
+    <span className={`flex items-center justify-center rounded-xl bg-ink-900 text-white ${className}`} aria-hidden>
+      <svg viewBox="0 0 24 24" className="h-[58%] w-[58%]" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M12 4c5 0 8 3 8 7s-3 6-6 6-4-2-4-4 1.5-3 3-3 3 1 3 3" />
+        <path d="M12 4C7 4 4 7 4 11s3 8 8 8" />
+        <circle cx="12" cy="4" r="1.6" fill="currentColor" stroke="none" />
+      </svg>
+    </span>
   );
 }

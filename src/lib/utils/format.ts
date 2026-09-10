@@ -21,6 +21,16 @@ export function formatDuration(seconds: number): string {
   return `${h} h ${m.toString().padStart(2, "0")}`;
 }
 
+/** "Environ 2 h 15": rounded to `roundToMinutes` so the estimate does not pretend to be exact. */
+export function formatDurationApprox(seconds: number, roundToMinutes = 5): string {
+  if (!Number.isFinite(seconds) || seconds < 0) return "–";
+  const minutes = Math.max(roundToMinutes, Math.round(seconds / 60 / roundToMinutes) * roundToMinutes);
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  if (h === 0) return `≈ ${m} min`;
+  return m === 0 ? `≈ ${h} h` : `≈ ${h} h ${m.toString().padStart(2, "0")}`;
+}
+
 export function formatPercent(ratio: number, decimals = 0): string {
   if (!Number.isFinite(ratio)) return "–";
   return `${(ratio * 100).toFixed(decimals)} %`;

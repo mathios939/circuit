@@ -108,6 +108,18 @@ describe("server env validation", () => {
     expect(parseServerEnv({ NODE_ENV: "production", ROUTING_PROVIDER: "mock" }).errors[0]).toMatch(/réservé aux tests/);
     expect(parseServerEnv({ NODE_ENV: "production", ROUTING_PROVIDER: "mock", ALLOW_MOCK_PROVIDERS: "true" }).errors).toEqual([]);
   });
+  it("warns (without failing) about risky production settings", () => {
+    const prod = parseServerEnv({ NODE_ENV: "production", ROUTING_PROVIDER: "osrm", ROUTING_OSRM_URL: "http://localhost:5000", DIAGNOSTICS_ENABLED: "true", GEOCODING_USER_AGENT: "my-app/1.0 (ops@example.com)" });
+    expect(prod.errors).toEqual([]);
+    expect(prod.env!.warnings.some((w) => w.includes("ROUTING_OSRM_URL") && w.includes("locale"))).toBe(true);
+    expect(prod.env!.warnings.some((w) => w.includes("DIAGNOSTICS_ENABLED"))).toBe(true);
+    expect(prod.env!.warnings.some((w) => w.includes("GEOCODING_USER_AGENT"))).toBe(false);
+    // The public FOSSGIS instance and the default User-Agent are flagged in production only.
+    const defaults = parseServerEnv({ NODE_ENV: "production" });
+    expect(defaults.env!.warnings.some((w) => w.includes("FOSSGIS"))).toBe(true);
+    expect(defaults.env!.warnings.some((w) => w.includes("GEOCODING_USER_AGENT"))).toBe(true);
+    expect(parseServerEnv({ NODE_ENV: "development", ROUTING_PROVIDER: "osrm", ROUTING_OSRM_URL: "http://localhost:5000" }).env!.warnings).toEqual([]);
+  });
   it("honours primary/fallback routing and demo mode", () => {
     const { env } = parseServerEnv({ ...base, ROUTING_PROVIDER_PRIMARY: "osrm", ROUTING_OSRM_URL: "http://localhost:5000", ROUTING_PROVIDER_FALLBACK: "valhalla" });
     expect(env!.routing.provider).toBe("osrm");

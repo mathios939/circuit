@@ -1,18 +1,23 @@
 import type { Metadata, Viewport } from "next";
+import { COLORS } from "@/lib/ui/colors";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Circuit — Générateur de parcours sportifs",
+  title: { default: "Circuit — Choisissez la distance. Circuit trouve la route.", template: "%s · Circuit" },
   description:
-    "Créez en quelques secondes des boucles et itinéraires pour le vélo, le VTT, le gravel, la course à pied, le trail et la randonnée, puis exportez-les en GPX.",
+    "Boucles et itinéraires sur mesure pour le vélo de route, le gravel, le VTT, la course à pied, le trail, la randonnée et la marche. Choisissez la distance, comparez trois propositions, exportez en GPX.",
   applicationName: "Circuit",
+  manifest: "/manifest.webmanifest",
+  appleWebApp: { capable: true, statusBarStyle: "default", title: "Circuit" },
+  formatDetection: { telephone: false },
 };
 
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
-  themeColor: "#0b8577",
+  viewportFit: "cover",
+  themeColor: COLORS.brand,
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

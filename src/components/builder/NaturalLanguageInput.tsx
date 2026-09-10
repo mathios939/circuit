@@ -53,7 +53,7 @@ export function NaturalLanguageInput() {
   return (
     <div className="space-y-2 rounded-xl border border-brand-100 bg-brand-50/60 p-3">
       <label htmlFor="nl-input" className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-brand-700">
-        <Sparkles className="h-3.5 w-3.5" /> Décrivez votre sortie
+        <Sparkles className="h-3.5 w-3.5" /> Ou décrivez votre sortie
       </label>
       <textarea
         id="nl-input"

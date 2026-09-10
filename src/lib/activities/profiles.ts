@@ -1,4 +1,4 @@
-import type { ActivityProfile, ActivityType, SurfaceType, WayType } from "@/lib/types";
+import type { ActivityProfile, ActivityType, RouteStyle, SurfaceType, WayType } from "@/lib/types";
 
 const surfaces = (paved: number, gravel: number, trail: number, unknown = 0.7): Record<SurfaceType, number> => ({
   paved,
@@ -139,9 +139,9 @@ export const ACTIVITY_LABELS: Record<ActivityType, string> = {
   walking: "Marche",
 };
 
-/** Short slug used in file names and URLs. */
+/** Short slug used in file names and URLs (e.g. annecy-velo-route-50km.gpx). */
 export const ACTIVITY_SLUGS: Record<ActivityType, string> = {
-  road_cycling: "velo",
+  road_cycling: "velo-route",
   gravel: "gravel",
   mtb: "vtt",
   running: "course",
@@ -149,3 +149,37 @@ export const ACTIVITY_SLUGS: Record<ActivityType, string> = {
   hiking: "rando",
   walking: "marche",
 };
+
+/**
+ * Names of the three proposals, adapted to the activity: "Rapide / Équilibrée /
+ * Aventure" reads well for cycling and running, "Accessible / Équilibré /
+ * Sportif" for trail, hiking and mountain biking.
+ */
+export function getStyleLabels(activity: ActivityType): Record<RouteStyle, string> {
+  switch (activity) {
+    case "trail_running":
+    case "hiking":
+    case "mtb":
+    case "walking":
+      return { fast: "Accessible", balanced: "Équilibré", adventure: "Sportif" };
+    default:
+      return { fast: "Rapide", balanced: "Équilibrée", adventure: "Aventure" };
+  }
+}
+
+/** One-line description of what each proposal favours, per activity family. */
+export function getStyleDescriptions(activity: ActivityType): Record<RouteStyle, string> {
+  const profile = ACTIVITY_PROFILES[activity];
+  if (profile.locomotion === "bicycle" && activity !== "mtb") {
+    return {
+      fast: "Routes efficaces, peu de détours.",
+      balanced: "Routes secondaires et voies calmes, bon roulage.",
+      adventure: "Petites routes, voies vertes et chemins compatibles.",
+    };
+  }
+  return {
+    fast: "Itinéraire direct sur les voies les plus simples.",
+    balanced: "Mélange de chemins et de voies calmes.",
+    adventure: "Sentiers, dénivelé et nature en priorité.",
+  };
+}

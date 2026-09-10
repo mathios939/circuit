@@ -12,9 +12,11 @@ import { buildRouteResult } from "@/lib/route-generator/build";
 import { decodeSharedRoute } from "@/lib/share/encode";
 import { getRouteRepository } from "@/lib/storage/local";
 import { Button } from "@/components/ui/Button";
+import { Disclaimer } from "@/components/layout/Disclaimer";
 import { ElevationProfile } from "@/components/results/ElevationProfile";
 import { RouteDNA } from "@/components/results/RouteDNA";
 import { RouteStats } from "@/components/results/RouteStats";
+import { RouteSummary } from "@/components/results/RouteSummary";
 import { useRouteStore } from "@/store/route-store";
 
 const RouteMap = dynamic(() => import("@/components/map/RouteMap").then((m) => m.RouteMap), { ssr: false });
@@ -86,9 +88,11 @@ export function SharedRouteView({ id, encoded }: { id: string; encoded: string |
         <p className="text-xs font-semibold uppercase tracking-wide text-brand-700">{ACTIVITY_LABELS[route.activity]}</p>
         <h1 className="mb-4 text-lg font-bold leading-tight text-ink-900">{route.name}</h1>
         <div className="space-y-5">
+          <RouteSummary route={route} />
           <RouteStats route={route} />
           <ElevationProfile route={route} />
-          <RouteDNA dna={route.dna} />
+          <RouteDNA dna={route.dna} activity={route.activity} />
+          <Disclaimer activity={route.activity} compact />
           <div className="flex gap-2">
             <Button
               variant="accent"

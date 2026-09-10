@@ -11,7 +11,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /** Events streamed to the client as newline-delimited JSON. */
-export type GenerateStreamEvent =
+type GenerateStreamEvent =
   | { type: "progress"; progress: GenerationProgress }
   | { type: "result"; result: RouteGenerationResult }
   | { type: "error"; error: { code: string; message: string } };

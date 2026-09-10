@@ -126,5 +126,6 @@ export function describeConfiguration() {
     maps: getBasemaps().map((b) => ({ id: b.id, label: b.label, kind: b.kind })),
     limits: env.limits.perMinute,
     keys: { graphhopper: Boolean(env.routing.graphhopperKey), openrouteservice: Boolean(env.routing.orsKey), maptiler: Boolean(process.env.NEXT_PUBLIC_MAPTILER_KEY) },
+    warnings: env.warnings,
   };
 }

@@ -15,11 +15,6 @@ export function toRoutePoints(coords: readonly (LatLng & { ele?: number })[]): R
   return out;
 }
 
-/** Recompute cumulative distances (after editing / reversing). */
-export function recomputeDistances(points: readonly RoutePoint[]): RoutePoint[] {
-  return toRoutePoints(points);
-}
-
 export function computeBBox(points: readonly LatLng[]): BBox {
   let west = Infinity;
   let south = Infinity;

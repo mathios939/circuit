@@ -3,10 +3,10 @@
 import { create } from "zustand";
 import type { ActivityType, GenerationProgress, LatLng, Place, RouteAdjustment, RouteMode, RoutePreferences, RouteRequest, RouteResult, RouteWaypoint } from "@/lib/types";
 import { getActivityProfile } from "@/lib/activities/profiles";
-import { calculateRouteApi, errorMessage, generateRoutesApi, reverseGeocodeApi } from "@/lib/client/api";
+import { calculateRouteApi, errorHint, errorMessage, generateRoutesApi, reverseGeocodeApi } from "@/lib/client/api";
 import { importGpxText } from "@/lib/client/import-gpx";
 import { cutBetween, insertWaypoint, moveWaypoint as moveWp, removeWaypoint as removeWp, reverseWaypoints, setEnd as setEndWp, setStart as setStartWp } from "@/lib/editor/waypoints";
-import { toAppError } from "@/lib/errors";
+import { toAppError, USER_HINTS } from "@/lib/errors";
 import type { RouteIntent } from "@/lib/nl/parser";
 import { adjustRequest } from "@/lib/route-generator/adjust";
 import { getRouteRepository } from "@/lib/storage/local";
@@ -52,8 +52,12 @@ export interface RouteStore {
   // ----- generation
   status: GenerationStatus;
   error: string | null;
+  /** Actionable hint attached to `error`, when one exists. */
+  errorHint: string | null;
   routes: RouteResult[];
   notes: string[];
+  /** Set when no proposal matched the requested distance within tolerance. */
+  distanceMismatch: { requestedKm: number; bestKm: number } | null;
   selectedId: string | null;
   lastRequest: RouteRequest | null;
   /** Current stage of the running generation (streamed by the server). */
@@ -164,8 +168,10 @@ export const useRouteStore = create<RouteStore>()((set, get) => ({
   // ----- generation
   status: "idle",
   error: null,
+  errorHint: null,
   routes: [],
   notes: [],
+  distanceMismatch: null,
   selectedId: null,
   lastRequest: null,
   progress: null,
@@ -178,7 +184,7 @@ export const useRouteStore = create<RouteStore>()((set, get) => ({
     generationAbort?.abort();
     generationAbort = new AbortController();
     const initial: GenerationProgress = { stage: "candidates", message: "Création des variantes" };
-    set({ status: "loading", error: null, editing: false, cutBuffer: [], undoStack: [], panelTab: "results", lastRequest: request, progress: initial, progressHistory: [], lastTimings: null });
+    set({ status: "loading", error: null, errorHint: null, distanceMismatch: null, editing: false, cutBuffer: [], undoStack: [], panelTab: "results", lastRequest: request, progress: initial, progressHistory: [], lastTimings: null });
     try {
       const result = await generateRoutesApi(request, {
         signal: generationAbort.signal,
@@ -193,6 +199,7 @@ export const useRouteStore = create<RouteStore>()((set, get) => ({
         status: "success",
         routes: result.routes,
         notes: result.notes,
+        distanceMismatch: result.distanceMismatch ?? null,
         selectedId: first?.id ?? null,
         fitRequestId: get().fitRequestId + 1,
         progress: null,
@@ -202,7 +209,7 @@ export const useRouteStore = create<RouteStore>()((set, get) => ({
       if (first) void getRouteRepository().recordHistory(first).then(() => get().refreshSaved());
     } catch (e) {
       if (e instanceof DOMException && e.name === "AbortError") return;
-      set({ status: "error", error: errorMessage(e), routes: [], notes: [], selectedId: null, progress: null, progressHistory: [] });
+      set({ status: "error", error: errorMessage(e), errorHint: errorHint(e), routes: [], notes: [], distanceMismatch: null, selectedId: null, progress: null, progressHistory: [] });
     }
   },
   adjust: async (adjustment) => {
@@ -217,7 +224,7 @@ export const useRouteStore = create<RouteStore>()((set, get) => ({
     set({ status: get().routes.length > 0 ? "success" : "idle", progress: null, progressHistory: [] });
   },
   selectRoute: (id) => set({ selectedId: id, editing: false, cutBuffer: [], undoStack: [], fitRequestId: get().fitRequestId + 1 }),
-  clearResults: () => set({ routes: [], notes: [], selectedId: null, status: "idle", error: null, editing: false, undoStack: [] }),
+  clearResults: () => set({ routes: [], notes: [], distanceMismatch: null, selectedId: null, status: "idle", error: null, errorHint: null, editing: false, undoStack: [] }),
 
   // ----- editor
   editing: false,
@@ -347,9 +354,11 @@ export const useRouteStore = create<RouteStore>()((set, get) => ({
     set({
       routes: [route],
       notes: [],
+      distanceMismatch: null,
       selectedId: route.id,
       status: "success",
       error: null,
+      errorHint: null,
       editing: false,
       undoStack: [],
       panelTab: "results",
@@ -362,7 +371,7 @@ export const useRouteStore = create<RouteStore>()((set, get) => ({
   // ----- import
   importGpx: async (file) => {
     if (file.size > GPX_MAX_BYTES_CLIENT) {
-      set({ status: "error", error: "Ce fichier GPX est trop volumineux (10 Mo maximum)." });
+      set({ status: "error", error: "Ce fichier GPX est trop volumineux (10 Mo maximum).", errorHint: USER_HINTS.GPX_TOO_LARGE ?? null, panelTab: "results" });
       return;
     }
     try {
@@ -371,7 +380,8 @@ export const useRouteStore = create<RouteStore>()((set, get) => ({
       get().loadRoute(route);
       get().setToast("Trace GPX importée.");
     } catch (e) {
-      set({ status: "error", error: toAppError(e).message, routes: [], selectedId: null });
+      const err = toAppError(e);
+      set({ status: "error", error: err.message, errorHint: USER_HINTS[err.code] ?? null, routes: [], selectedId: null, panelTab: "results" });
     }
   },
 

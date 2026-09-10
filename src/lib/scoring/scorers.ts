@@ -1,4 +1,4 @@
-import type { ActivityProfile, RouteRequest, RouteScore, RouteStatistics, RouteStyle, ScoreComponent } from "@/lib/types";
+import type { ActivityProfile, RouteRequest, RouteScore, RouteScoreSummary, RouteStatistics, RouteStyle, ScoreComponent } from "@/lib/types";
 import { clamp } from "@/lib/utils/format";
 
 export interface ScoringContext {
@@ -175,5 +175,32 @@ export function scoreRoute(ctx: ScoringContext, scorers: readonly Scorer[] = DEF
     totalWeight += weight;
   }
   const total = totalWeight > 0 ? Math.round((weighted / totalWeight) * 100) : 0;
-  return { total, components };
+  return { total, components, summary: buildScoreSummary(ctx, components) };
+}
+
+/**
+ * Five headline sub-scores shown next to the "Score Circuit". They are
+ * estimations: nature and calm derive from OSM way types when the engine
+ * reports them (neutral 50 otherwise), difficulty from distance and gain
+ * relative to the activity, variety from repeated ground and way diversity.
+ */
+export function buildScoreSummary(ctx: ScoringContext, components: readonly ScoreComponent[]): RouteScoreSummary {
+  const { stats, profile } = ctx;
+  const pct = (v: number) => Math.round(clamp(v, 0, 1) * 100);
+  const component = (id: string) => components.find((c) => c.id === id)?.value;
+  const known = stats.surfaceCoverage > 0.3;
+  const w = stats.ways;
+  const distanceLoad = stats.distanceM / 1000 / profile.difficulty.longDistanceKm;
+  const ascentLoad = stats.hasElevation ? stats.ascentM / profile.difficulty.hillyAscentM : 0.35;
+  const ways = Object.entries(w)
+    .filter(([k, v]) => k !== "other" && v > 0.01)
+    .map(([, v]) => v);
+  const entropy = ways.reduce((acc, v) => acc - v * Math.log(v), 0) / Math.log(6);
+  return {
+    distance: pct(component("distance") ?? 1),
+    nature: known ? pct(w.path + w.track + w.cycleway * 0.6 + w.footway * 0.4 + w.residential * 0.15) : 50,
+    calm: known ? pct(1 - w.major_road * 4 - w.road * 0.5) : 50,
+    difficulty: pct(distanceLoad * 0.5 + ascentLoad * 0.6),
+    variety: pct((1 - clamp(stats.overlapRatio * 2, 0, 1)) * 0.6 + (known ? clamp(entropy, 0, 1) : 0.5) * 0.4),
+  };
 }

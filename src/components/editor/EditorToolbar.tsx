@@ -1,15 +1,15 @@
 "use client";
 
-import { ArrowLeftRight, MousePointer2, Pencil, Plus, Scissors, Undo2, X } from "lucide-react";
+import { ArrowLeftRight, MousePointer2, Plus, Scissors, Undo2, X } from "lucide-react";
 import type { RouteResult } from "@/lib/types";
 import { Button } from "@/components/ui/Button";
 import { ErrorBanner, Spinner } from "@/components/ui/Feedback";
 import { useRouteStore } from "@/store/route-store";
 
 /**
- * Manual editing controls. Waypoints are dragged directly on the map; this
- * toolbar switches tools (move / add / cut), reverses, undoes and shows the
- * recalculation state.
+ * Manual editing controls, shown while `editing` is on. Waypoints are dragged
+ * directly on the map; this toolbar switches tools (move / add / cut),
+ * reverses, undoes and shows the recalculation state.
  */
 export function EditorToolbar({ route }: { route: RouteResult }) {
   const editing = useRouteStore((s) => s.editing);
@@ -24,13 +24,7 @@ export function EditorToolbar({ route }: { route: RouteResult }) {
   const recalcError = useRouteStore((s) => s.recalcError);
   const applyWaypoints = useRouteStore((s) => s.applyWaypoints);
 
-  if (!editing) {
-    return (
-      <Button block onClick={() => setEditing(true)} icon={<Pencil className="h-4 w-4" />} data-testid="edit-button">
-        Modifier le parcours
-      </Button>
-    );
-  }
+  if (!editing) return null;
 
   const toolButton = (id: typeof tool, label: string, Icon: typeof Plus, hint: string) => (
     <button
@@ -38,7 +32,7 @@ export function EditorToolbar({ route }: { route: RouteResult }) {
       onClick={() => setTool(id)}
       aria-pressed={tool === id}
       title={hint}
-      className={`flex flex-1 flex-col items-center gap-1 rounded-lg px-2 py-2 text-[11px] font-medium ${tool === id ? "bg-ink-900 text-white" : "bg-white text-ink-700 hover:bg-ink-100"}`}
+      className={`flex min-h-11 flex-1 flex-col items-center gap-1 rounded-lg px-2 py-2 text-[11px] font-medium ${tool === id ? "bg-ink-900 text-white" : "bg-white text-ink-700 hover:bg-ink-100"}`}
     >
       <Icon className="h-4 w-4" />
       {label}

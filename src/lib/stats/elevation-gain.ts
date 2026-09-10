@@ -1,4 +1,5 @@
 import type { RoutePoint } from "@/lib/types";
+import { ROUTE_ENGINE } from "@/lib/route-generator/config";
 
 /**
  * Elevation gain / loss.
@@ -26,9 +27,7 @@ export interface ElevationGain {
   hasElevation: boolean;
 }
 
-export const DEFAULT_GAIN_THRESHOLD_M = 4;
-
-export function computeElevationGain(points: readonly RoutePoint[], thresholdM = DEFAULT_GAIN_THRESHOLD_M): ElevationGain {
+export function computeElevationGain(points: readonly RoutePoint[], thresholdM: number = ROUTE_ENGINE.elevation.gainThresholdM): ElevationGain {
   const withEle = points.filter((p): p is RoutePoint & { ele: number } => typeof p.ele === "number" && Number.isFinite(p.ele));
   if (withEle.length < 2) {
     return { ascentM: 0, descentM: 0, ascentRawM: 0, hasElevation: false };
@@ -54,7 +53,7 @@ export function computeElevationGain(points: readonly RoutePoint[], thresholdM =
     ascentRawM: Math.round(rawGain.ascent),
     minEleM: Math.round(min),
     maxEleM: Math.round(max),
-    maxGradientPct: computeMaxGradient(filteredPoints, 100),
+    maxGradientPct: computeMaxGradient(filteredPoints, ROUTE_ENGINE.elevation.gradientWindowM),
     hasElevation: true,
   };
 }
@@ -105,11 +104,11 @@ export function accumulateWithHysteresis(series: readonly number[], thresholdM: 
   return { ascent, descent };
 }
 
-/** Moving median (window 5) followed by a moving average (window 3). */
+/** Moving median (window 5) followed by a moving average (window 3), see ROUTE_ENGINE.elevation. */
 export function filterElevationSeries(series: readonly number[]): number[] {
-  if (series.length < 5) return [...series];
-  const median = movingMedian(series, 5);
-  return movingMean(median, 3);
+  const { medianWindow, meanWindow } = ROUTE_ENGINE.elevation;
+  if (series.length < medianWindow) return [...series];
+  return movingMean(movingMedian(series, medianWindow), meanWindow);
 }
 
 /** Symmetric windows shrink near the ends so that the first / last values are never distorted. */
@@ -167,7 +166,7 @@ export function smoothElevation(points: readonly RoutePoint[]): RoutePoint[] {
       series.push(p.ele);
     }
   });
-  if (series.length < 5) return [...points];
+  if (series.length < ROUTE_ENGINE.elevation.medianWindow) return [...points];
   const filtered = filterElevationSeries(series);
   const out = [...points];
   indices.forEach((pointIndex, k) => {

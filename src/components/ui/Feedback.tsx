@@ -3,11 +3,18 @@
 import { AlertTriangle, Info, X } from "lucide-react";
 import type { ReactNode } from "react";
 
-export function ErrorBanner({ message, onClose }: { message: string; onClose?(): void }) {
+export function ErrorBanner({ message, hint, onClose }: { message: string; hint?: string; onClose?(): void }) {
   return (
     <div role="alert" data-testid="error-banner" className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">
       <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
-      <p className="flex-1">{message}</p>
+      <div className="flex-1 space-y-1">
+        <p className="font-medium">{message}</p>
+        {hint ? (
+          <p className="text-xs text-red-700" data-testid="error-hint">
+            {hint}
+          </p>
+        ) : null}
+      </div>
       {onClose ? (
         <button type="button" onClick={onClose} aria-label="Fermer" className="rounded p-0.5 hover:bg-red-100">
           <X className="h-4 w-4" />

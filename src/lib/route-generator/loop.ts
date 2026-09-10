@@ -4,6 +4,7 @@ import { createLimiter, settledValues } from "@/lib/utils/concurrency";
 import { seededRandom } from "@/lib/utils/id";
 import type { RawRoute, RoutingProfileOptions, RoutingProvider } from "@/lib/routing/provider";
 import { initialShapes, loopViaPoints, type LoopShape, type LoopStrategy } from "./candidates";
+import { CANDIDATE_RANKING, ROUTE_ENGINE } from "./config";
 import { assessRouteQuality } from "./quality";
 import { routeSimilarity } from "./similarity";
 
@@ -52,6 +53,12 @@ export interface LoopSearchResult {
   evaluated: LoopCandidate[];
   /** Tolerance actually used to accept the candidates. */
   toleranceUsed: number;
+  /**
+   * True when no candidate met the distance tolerance and the returned ones
+   * are the closest *otherwise valid* loops (near misses). The caller must
+   * tell the user instead of presenting them as on-target.
+   */
+  nearMiss: boolean;
   notes: string[];
   routingCalls: number;
 }
@@ -83,14 +90,14 @@ export async function searchLoops(provider: RoutingProvider, options: LoopSearch
     profile,
     activityProfile,
     signal,
-    tolerance = 0.05,
-    maxTolerance = 0.1,
-    candidateCount = 12,
-    maxIterations = 2,
+    tolerance = ROUTE_ENGINE.distance.tolerance,
+    maxTolerance = ROUTE_ENGINE.distance.maxTolerance,
+    candidateCount = ROUTE_ENGINE.candidates.defaultCount,
+    maxIterations = ROUTE_ENGINE.candidates.defaultMaxIterations,
     keep = 3,
-    maxRoutingCalls = 40,
+    maxRoutingCalls = ROUTE_ENGINE.candidates.defaultMaxRoutingCalls,
     concurrency = 3,
-    maxSimilarity = 0.85,
+    maxSimilarity = ROUTE_ENGINE.similarity.maxBetweenVariants,
     onProgress,
   } = options;
 
@@ -118,7 +125,7 @@ export async function searchLoops(provider: RoutingProvider, options: LoopSearch
   // Native round trips (GraphHopper / openrouteservice) enrich the pool.
   if (provider.calculateLoop && routingCalls < maxRoutingCalls) {
     const native = await settledValues(
-      [0, 1].map(async (k) => {
+      Array.from({ length: ROUTE_ENGINE.candidates.nativeLoops }, (_, k) => k).map(async (k) => {
         routingCalls++;
         const raw = await limit(() => provider.calculateLoop!({ start, distanceM: targetM, seed: seed + k, profile, signal }));
         const shape: LoopShape = { strategy: "radial_triangle", bearing: 0, radiusM: 0, clockwise: true, vias: [] };
@@ -147,7 +154,7 @@ export async function searchLoops(provider: RoutingProvider, options: LoopSearch
     const toRefine = [...pool.values()]
       .filter((c) => c.shape.radiusM > 0 && c.distanceError > tolerance && c.quality.geometryValid && c.quality.outAndBackRatio < 0.5)
       .sort((a, b) => a.distanceError - b.distanceError)
-      .slice(0, Math.max(keep + 2, 5));
+      .slice(0, Math.max(keep + 2, ROUTE_ENGINE.candidates.refinePerPass));
     if (toRefine.length === 0) break;
     const budget = maxRoutingCalls - routingCalls;
     if (budget <= 0) {
@@ -158,7 +165,7 @@ export async function searchLoops(provider: RoutingProvider, options: LoopSearch
       toRefine.slice(0, budget).map((c) => {
         const ratio = targetM / Math.max(1, c.raw.distanceM);
         // Damped update: road networks do not scale linearly with the radius.
-        const radiusM = c.shape.radiusM * Math.pow(ratio, 0.85);
+        const radiusM = c.shape.radiusM * Math.pow(ratio, ROUTE_ENGINE.distance.refinementDamping);
         return routeShape({ ...c.shape, radiusM }, pass + 1);
       }),
     );
@@ -172,6 +179,7 @@ export async function searchLoops(provider: RoutingProvider, options: LoopSearch
   // --- Phase 3: quality gate + selection ------------------------------------
   const all = [...pool.values()];
   let toleranceUsed = tolerance;
+  let nearMiss = false;
   let accepted = all.filter((c) => !c.quality.rejected && c.distanceError <= tolerance);
   if (accepted.length === 0) {
     toleranceUsed = maxTolerance;
@@ -179,23 +187,37 @@ export async function searchLoops(provider: RoutingProvider, options: LoopSearch
     if (accepted.length > 0) notes.push(`Tolérance de distance élargie à ±${Math.round(maxTolerance * 100)} % pour trouver des boucles.`);
   }
   if (accepted.length === 0) {
+    // Near misses: loops that only failed on distance are offered with an explicit warning.
+    const nearTolerance = ROUTE_ENGINE.distance.nearMissTolerance;
+    accepted = all.filter((c) => onlyDistanceFailed(c) && c.distanceError <= nearTolerance);
+    if (accepted.length > 0) {
+      nearMiss = true;
+      toleranceUsed = Math.max(...accepted.map((c) => c.distanceError));
+    }
+  }
+  if (accepted.length === 0) {
     const reasons = summariseReasons(all);
-    throw new AppError("NO_ROUTE", "Aucune boucle satisfaisante n'a été trouvée pour cette distance depuis ce point. Essayez une autre distance ou un autre départ.", {
+    throw new AppError("NO_ROUTE", "Aucune boucle satisfaisante n'a été trouvée pour cette distance depuis ce point. Essayez une autre distance ou déplacez légèrement le départ.", {
       details: `no loop within ±${Math.round(maxTolerance * 100)} % after ${routingCalls} routing calls; ${reasons}`,
     });
   }
 
-  accepted.sort((a, b) => b.score - a.score);
+  accepted.sort((a, b) => (nearMiss ? a.distanceError - b.distanceError : b.score - a.score));
   const selected: LoopCandidate[] = [];
   for (const c of accepted) {
     if (selected.length >= keep) break;
-    const duplicate = selected.some((s) => routeSimilarity(s.raw.coordinates, c.raw.coordinates) >= maxSimilarity);
+    const duplicate = selected.some((s) => routeSimilarity(s.raw.coordinates, c.raw.coordinates, ROUTE_ENGINE.similarity.cellM) >= maxSimilarity);
     if (!duplicate) selected.push(c);
   }
   if (selected.length < Math.min(keep, accepted.length)) notes.push("Certaines boucles trop semblables ont été écartées.");
 
   evaluated.sort((a, b) => b.score - a.score);
-  return { candidates: selected, evaluated, toleranceUsed, notes, routingCalls };
+  return { candidates: selected, evaluated, toleranceUsed, nearMiss, notes, routingCalls };
+}
+
+/** True when the quality gate rejected the candidate for its distance only. */
+function onlyDistanceFailed(c: LoopCandidate): boolean {
+  return c.quality.geometryValid && c.quality.reasons.every((r) => r.startsWith("Distance"));
 }
 
 /**
@@ -224,7 +246,7 @@ export async function restyleLoop(
   let result = await route(candidate.shape);
   if (result.distanceError > tolerance && candidate.shape.radiusM > 0) {
     const ratio = targetM / Math.max(1, result.raw.distanceM);
-    const refined = await route({ ...candidate.shape, radiusM: candidate.shape.radiusM * Math.pow(ratio, 0.85) });
+    const refined = await route({ ...candidate.shape, radiusM: candidate.shape.radiusM * Math.pow(ratio, ROUTE_ENGINE.distance.refinementDamping) });
     if (refined.distanceError < result.distanceError) result = refined;
   }
   return { candidate: result, routingCalls };
@@ -246,14 +268,14 @@ function assess(
     distanceM: raw.distanceM,
     targetM,
     start,
-    waypointCount: waypoints.length,
+    waypoints,
     isLoop: true,
     profile: activityProfile,
     segments: raw.segments,
     maxDistanceError,
   });
   // Preliminary ranking: quality score, with a strong preference for exact distance.
-  const score = quality.qualityScore * 0.7 + (1 - Math.min(1, distanceError * 8)) * 30;
+  const score = quality.qualityScore * CANDIDATE_RANKING.qualityWeight + (1 - Math.min(1, distanceError * CANDIDATE_RANKING.distanceSharpness)) * CANDIDATE_RANKING.distanceWeight;
   return { raw, waypoints, shape, distanceError, quality, iterations, score };
 }
 

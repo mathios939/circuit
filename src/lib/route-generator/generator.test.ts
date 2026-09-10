@@ -185,9 +185,16 @@ describe("recalculateRoute / adjustRequest", () => {
     const nature = adjustRequest(route, "more_nature");
     expect(nature.preferences?.preferNature).toBe(true);
     expect(nature.styles).toEqual(["adventure"]);
-    const ele = adjustRequest(route, "elevation_plus");
+    const ele = adjustRequest(route, "more_elevation");
     expect(ele.elevationTargetM).toBe(route.stats.ascentM + 200);
     expect(ele.preferences?.elevationMode).toBe("maximize");
+    const easier = adjustRequest(route, "easier");
+    expect(easier.distanceKm).toBeLessThan(route.stats.distanceM / 1000);
+    expect(easier.elevationMaxM).toBe(Math.round(route.stats.ascentM * 0.7));
+    expect(easier.styles).toEqual(["fast"]);
+    const quiet = adjustRequest(route, "more_quiet");
+    expect(quiet.preferences?.preferQuietRoads).toBe(true);
+    expect(quiet.distanceKm).toBeCloseTo(route.stats.distanceM / 1000, 0);
   });
 
   it("surfaces routing errors as AppError", async () => {

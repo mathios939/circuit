@@ -21,6 +21,7 @@ export function getServerLogger(): Logger {
     try {
       const env = getServerEnv();
       setRootLogger(createLogger({ level: env.nodeEnv === "test" ? "silent" : env.observability.logLevel, format: env.observability.logFormat }));
+      for (const warning of env.warnings) getRootLogger().warn("configuration warning", { warning });
     } catch {
       /* configuration errors are reported by the route itself */
     }

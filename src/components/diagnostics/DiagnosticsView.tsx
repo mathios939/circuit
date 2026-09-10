@@ -67,6 +67,7 @@ export function DiagnosticsView() {
   }, []);
 
   const probes = data?.probes ?? [];
+  const warnings = Array.isArray(data?.configuration?.warnings) ? (data.configuration.warnings as string[]) : [];
   const byCategory = (["routing", "geocoding", "elevation", "maps"] as const).map((c) => ({ category: c, items: probes.filter((p) => p.category === c) }));
 
   return (
@@ -90,6 +91,17 @@ export function DiagnosticsView() {
       </header>
 
       {error ? <ErrorBanner message={error} /> : null}
+
+      {warnings.length > 0 ? (
+        <section className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900" data-testid="config-warnings">
+          <h2 className="font-semibold">Avertissements de configuration</h2>
+          <ul className="mt-1.5 list-disc space-y-1 pl-5 text-xs">
+            {warnings.map((w) => (
+              <li key={w}>{w}</li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       {byCategory.map(({ category, items }) => (
         <section key={category} className="rounded-xl border border-ink-200 bg-white" aria-labelledby={`diag-${category}`}>

@@ -19,7 +19,7 @@ export function GenerateActions() {
   return (
     <div className="space-y-2">
       <Button variant="accent" size="lg" block loading={loading} disabled={!canGenerate} onClick={() => generate()} icon={<Wand2 className="h-4 w-4" />} data-testid="generate-button">
-        {loading ? "Calcul des parcours…" : "Générer"}
+        {loading ? "Calcul des parcours…" : "Générer mes parcours"}
       </Button>
       <div className="flex gap-2">
         <Button variant="secondary" block disabled={!canSurprise || loading} onClick={() => generate({ surprise: true })} icon={<Shuffle className="h-4 w-4" />} data-testid="surprise-button">
@@ -31,7 +31,7 @@ export function GenerateActions() {
           </Button>
         ) : null}
       </div>
-      {!start ? <p className="text-center text-xs text-ink-500">Choisissez un point de départ pour commencer.</p> : null}
+      <p className="text-center text-xs text-ink-500">{start ? "Trois propositions distinctes, calculées sur le réseau réel." : "Choisissez un point de départ pour commencer."}</p>
     </div>
   );
 }

@@ -1,0 +1,46 @@
+name: Integration (real providers)
+
+# Calls the real public services (Valhalla FOSSGIS, Photon, Nominatim,
+# Open-Meteo, OpenTopoData, OpenFreeMap) and, when the secrets exist,
+# GraphHopper / openrouteservice / MapTiler. Never runs on push: these
+# instances are shared and rate limited.
+on:
+  workflow_dispatch:
+    inputs:
+      campaign:
+        description: "Also run the validation campaign (≈ 12 generations, several minutes)"
+        type: boolean
+        default: false
+  schedule:
+    - cron: "17 5 * * 1" # Mondays 05:17 UTC
+
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Provider contracts
+        run: npm run test:integration
+        env:
+          GEOCODING_USER_AGENT: "circuit-ci/0.1 (+https://github.com/${{ github.repository }})"
+          GRAPHHOPPER_API_KEY: ${{ secrets.GRAPHHOPPER_API_KEY }}
+          OPENROUTESERVICE_API_KEY: ${{ secrets.OPENROUTESERVICE_API_KEY }}
+          NEXT_PUBLIC_MAPTILER_KEY: ${{ secrets.MAPTILER_KEY }}
+      - name: Validation campaign
+        if: ${{ inputs.campaign }}
+        run: npm run campaign
+        env:
+          GEOCODING_USER_AGENT: "circuit-ci/0.1 (+https://github.com/${{ github.repository }})"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: campaign-report
+          path: reports/
+          if-no-files-found: ignore
+          retention-days: 30

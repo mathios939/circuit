@@ -114,8 +114,3 @@ export function createThrottle(minIntervalMs: number) {
     return run;
   };
 }
-
-/** Elapsed milliseconds helper for instrumentation. */
-export function elapsedMs(since: number): number {
-  return Math.round(performance.now() - since);
-}

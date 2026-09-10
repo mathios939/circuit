@@ -1,27 +1,34 @@
 @import "tailwindcss";
 @import "maplibre-gl/dist/maplibre-gl.css";
 
+/*
+ * Visual identity: outdoor, calm, precise. Deep "forest ink" neutrals with a
+ * warm paper background, a pine-green brand and a signal-orange route colour
+ * that stays readable on every basemap.
+ */
 @theme {
   --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-display: "Avenir Next", "Segoe UI Variable Display", ui-sans-serif, system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
-  --color-ink-950: #0b1220;
-  --color-ink-900: #111827;
-  --color-ink-700: #374151;
-  --color-ink-500: #6b7280;
-  --color-ink-300: #d1d5db;
-  --color-ink-200: #e5e7eb;
-  --color-ink-100: #f3f4f6;
-  --color-ink-50: #f9fafb;
+  --color-ink-950: #0c1512;
+  --color-ink-900: #16221d;
+  --color-ink-700: #3b4a43;
+  --color-ink-500: #6b7a72;
+  --color-ink-400: #94a39b;
+  --color-ink-300: #cfd8d2;
+  --color-ink-200: #e2e8e4;
+  --color-ink-100: #eef2ef;
+  --color-ink-50: #f7f8f5;
 
-  --color-brand-50: #ecfdf5;
-  --color-brand-100: #d1fae5;
-  --color-brand-500: #0f9f8f;
-  --color-brand-600: #0b8577;
-  --color-brand-700: #086a5f;
+  --color-brand-50: #eaf6ef;
+  --color-brand-100: #cfeadb;
+  --color-brand-500: #1f8a5b;
+  --color-brand-600: #17714a;
+  --color-brand-700: #125a3b;
 
-  --color-route: #ff5a1f;
-  --color-route-alt: #94a3b8;
+  --color-route: #f2601d;
+  --color-route-alt: #9aa8a1;
 
   --radius-xl2: 1.25rem;
   --shadow-panel: 0 10px 40px -12px rgb(15 23 42 / 0.25);
