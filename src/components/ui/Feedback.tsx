@@ -5,7 +5,7 @@ import type { ReactNode } from "react";
 
 export function ErrorBanner({ message, onClose }: { message: string; onClose?(): void }) {
   return (
-    <div role="alert" className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+    <div role="alert" data-testid="error-banner" className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">
       <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
       <p className="flex-1">{message}</p>
       {onClose ? (

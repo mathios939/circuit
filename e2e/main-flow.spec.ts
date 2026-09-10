@@ -21,7 +21,7 @@ async function pickStart(page: Page, query: string, expected: string) {
 test.describe("main flow", () => {
   test("generates a road-cycling loop from Annecy and downloads a GPX", async ({ page }) => {
     await openApp(page);
-    await expect(page.getByRole("heading", { name: "Circuit" })).toBeVisible();
+    await expect(page.getByTestId("tab-create")).toHaveAttribute("aria-selected", "true");
 
     // 1. activity
     await page.getByTestId("activity-road_cycling").click();
@@ -76,7 +76,7 @@ test.describe("main flow", () => {
     await pickStart(page, "Océan", "Océan Atlantique");
     await page.getByTestId("distance-input").fill("10");
     await page.getByTestId("generate-button").click();
-    const alert = page.getByRole("complementary").getByRole("alert");
+    const alert = page.getByTestId("error-banner");
     await expect(alert).toContainText(/accessible|praticable/i, { timeout: 30_000 });
     await expect(alert).not.toContainText(/stack|Error:/);
   });
@@ -123,9 +123,11 @@ test.describe("main flow", () => {
     await expect(page.getByTestId("route-stats")).toBeVisible({ timeout: 30_000 });
     await page.getByTestId("edit-button").click();
     await expect(page.getByTestId("editor-toolbar")).toBeVisible();
+    const undo = page.getByTestId("editor-toolbar").getByRole("button", { name: "Annuler" });
+    await expect(undo).toBeDisabled();
     await page.getByRole("button", { name: "Inverser" }).click();
-    await expect(page.getByText("Recalcul du parcours…")).toBeVisible();
-    await expect(page.getByText("Recalcul du parcours…")).toBeHidden({ timeout: 30_000 });
-    await expect(page.getByRole("button", { name: "Annuler" })).toBeEnabled();
+    // The recalculation went through: the undo stack is no longer empty.
+    await expect(undo).toBeEnabled({ timeout: 30_000 });
+    await expect(page.getByTestId("route-stats")).toBeVisible();
   });
 });

@@ -42,6 +42,8 @@ export default defineConfig({
       GEOCODING_PROVIDER: "mock",
       ELEVATION_PROVIDER: "mock",
       NEXT_PUBLIC_MAP_PROVIDER: "openfreemap",
+      // Many generations in a row from one IP: do not trip the rate limiter.
+      RATE_LIMIT_PER_MINUTE: "5000",
     },
   },
 });
